@@ -1,0 +1,29 @@
+policy_id: credit_limit_v1
+description: >
+  Governs temporary/permanent credit limit or overdraft increases an
+  agent may approve without human review.
+
+max_temp_increase_pct_by_tier:
+  # % of current limit, temporary (30-day) increase
+  platinum: 50
+  gold: 30
+  silver: 15
+  standard: 10
+
+max_permanent_increase_pct_by_tier:
+  platinum: 25
+  gold: 15
+  silver: 10
+  standard: 5
+
+eligibility_requirements:
+  min_account_age_months: 6
+  min_credit_score: 650
+  max_current_utilization_pct: 80
+  no_missed_payments_last_months: 6
+
+escalation_required_if:
+  - min_account_age_months_not_met: true
+  - min_credit_score_not_met: true
+  - requested_increase_exceeds_tier_max: true
+  - customer_has_active_delinquency: true

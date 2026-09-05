@@ -1,0 +1,42 @@
+# Hardcoded negotiation bounds for personal/auto loan rate requests.
+# NegotiationAgent may only select terms inside these bounds. Anything
+# requiring an exception outside these bounds must go to EscalationAgent.
+
+policy_id: loan_negotiation_v1
+description: >
+  Governs how much an agent may discount a loan interest rate based on
+  customer relationship tier and credit score, without human approval.
+
+base_rate_by_credit_band:
+  excellent: 9.5   # credit_score >= 750
+  good: 11.0       # 700-749
+  fair: 13.5       # 650-699
+  poor: 16.0       # < 650
+
+max_discount_bps_by_tier:
+  # basis points off the base rate, cumulative caps
+  platinum: 150    # 1.50%
+  gold: 100        # 1.00%
+  silver: 50       # 0.50%
+  standard: 25     # 0.25%
+
+max_discount_bps_absolute_floor: 200   # never discount more than 2.00% total
+                                        # regardless of tier stacking
+
+loyalty_bonus_bps:
+  # extra bps allowed if customer has been with the bank N+ years,
+  # stacks with tier discount but still capped by absolute floor
+  years_5_plus: 25
+  years_10_plus: 50
+
+competitor_match_rule: >
+  Agent may match a competitor's quoted rate ONLY if the resulting rate is
+  still within max_discount_bps_absolute_floor of the base rate for that
+  customer's credit band. If the competitor's quote requires a larger
+  discount, this is NOT within agent authority -> escalate.
+
+escalation_required_if:
+  - requested_discount_bps_exceeds: 200
+  - customer_credit_score_below: 580
+  - customer_has_active_delinquency: true
+  - loan_amount_exceeds: 2500000   # INR, tune per market

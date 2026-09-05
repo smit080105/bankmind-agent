@@ -1,0 +1,27 @@
+policy_id: fee_waiver_v1
+description: >
+  Governs how many/what value of fees (overdraft, late payment, ATM) an
+  agent may waive per customer per rolling 12 months without escalation.
+
+max_waivers_per_year_by_tier:
+  platinum: 6
+  gold: 4
+  silver: 2
+  standard: 1
+
+max_single_waiver_amount_by_tier:
+  platinum: 5000    # INR
+  gold: 2500
+  silver: 1000
+  standard: 500
+
+goodwill_waiver_rule: >
+  A first-time fee in the customer's history for a given fee type may be
+  waived as a goodwill gesture even if the annual count above is already
+  used, capped at max_single_waiver_amount_by_tier, once per fee type
+  per account lifetime.
+
+escalation_required_if:
+  - waiver_count_this_year_exceeds_limit: true
+  - single_waiver_amount_exceeds_tier_max: true
+  - customer_account_status_not_in: ["active", "good_standing"]
