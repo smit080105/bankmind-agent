@@ -91,20 +91,20 @@ python scripts/init_db.py       # creates + seeds data/customers.db
 
 ## Run
 
-**CLI (fastest way to test):**
-```bash
-python scripts/run_cli.py
-```
-
-**API server:**
+**Dashboard (recommended — a real UI):**
 ```bash
 uvicorn app.main:app --reload
-# POST http://localhost:8000/decide
-# {
-#   "customer_id": "CUST1001",
-#   "request_type": "loan_rate_negotiation",
-#   "customer_message": "I found a better rate elsewhere, can you match 8.5% on my personal loan?"
-# }
+```
+Open **http://localhost:8000/** — a ledger-style console where you pick a
+customer, describe the request (or click a sample), and see the supervisor's
+decision: outcome stamp, reasoning, terms, cited policy passages, and the
+full agent trace. The API it calls lives under `/api/*`
+(`/api/decide`, `/api/customers`, `/api/health`); Swagger docs are still at
+`/docs` if you want to hit the API directly.
+
+**CLI (no browser needed):**
+```bash
+python scripts/run_cli.py
 ```
 
 ## Next phases (not built yet)

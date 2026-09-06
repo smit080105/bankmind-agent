@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BankMind — Supervisor Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="letterhead">
+  <div class="letterhead__inner">
+    <div class="letterhead__mark">BankMind</div>
+    <div class="letterhead__meta">Supervisor ledger &middot; Phase 1</div>
+  </div>
+</header>
+
+<main class="ledger">
+
+  <section class="page page--intake" aria-label="New request">
+    <h1>New request</h1>
+    <p class="page__sub">Enter what the customer is asking for. The supervisor will check it against policy before anything is offered.</p>
+
+    <form id="request-form">
+      <div class="field">
+        <label for="customer">Customer</label>
+        <select id="customer" name="customer_id" required>
+          <option value="" disabled selected>Choose a customer&hellip;</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="request_type">Request type</label>
+        <div class="segmented" id="request-type-group">
+          <button type="button" class="segmented__option is-active" data-value="loan_rate_negotiation">Loan rate</button>
+          <button type="button" class="segmented__option" data-value="fee_waiver">Fee waiver</button>
+          <button type="button" class="segmented__option" data-value="credit_limit_increase">Credit limit</button>
+        </div>
+        <input type="hidden" id="request_type" name="request_type" value="loan_rate_negotiation" />
+      </div>
+
+      <div class="field">
+        <label for="customer_message">What the customer said</label>
+        <textarea id="customer_message" name="customer_message" rows="3" required
+          placeholder="e.g. I found a personal loan at 9.8% at another bank, can you match it?"></textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field" data-for="loan_rate_negotiation,fee_waiver,credit_limit_increase">
+          <label for="requested_value" id="requested_value_label">Requested rate (%)</label>
+          <input type="number" step="0.01" id="requested_value" name="requested_value" />
+        </div>
+        <div class="field" data-for="loan_rate_negotiation">
+          <label for="loan_id">Loan ID</label>
+          <input type="text" id="loan_id" name="loan_id" placeholder="e.g. LOAN3001" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field" data-for="fee_waiver">
+          <label for="fee_type">Fee type</label>
+          <input type="text" id="fee_type" name="fee_type" placeholder="e.g. overdraft" />
+        </div>
+        <div class="field" data-for="credit_limit_increase">
+          <label for="account_id">Account ID</label>
+          <input type="text" id="account_id" name="account_id" placeholder="e.g. ACC2002" />
+        </div>
+      </div>
+
+      <button type="submit" class="submit" id="submit-btn">Route to supervisor</button>
+    </form>
+
+    <div class="samples">
+      <span class="samples__label">Try a sample</span>
+      <button type="button" class="samples__item" data-sample="1">Match a competitor loan rate</button>
+      <button type="button" class="samples__item" data-sample="2">Rate cut, delinquent account</button>
+      <button type="button" class="samples__item" data-sample="3">First-time overdraft waiver</button>
+      <button type="button" class="samples__item" data-sample="4">Temporary limit increase</button>
+    </div>
+  </section>
+
+  <div class="gutter" aria-hidden="true"></div>
+
+  <section class="page page--statement" aria-label="Decision">
+    <div id="statement-empty" class="statement-empty">
+      <h1>Statement</h1>
+      <p>Submit a request on the left to see the supervisor's decision, the policy it cites, and the full agent trace.</p>
+    </div>
+
+    <div id="statement-loading" class="statement-loading" hidden>
+      <div class="stamp stamp--pending">Reviewing</div>
+      <p class="loading-line">Consulting policy&hellip;</p>
+    </div>
+
+    <div id="statement-error" class="statement-error" hidden>
+      <h1>Couldn't complete this request</h1>
+      <p id="statement-error-message"></p>
+    </div>
+
+    <article id="statement-result" class="statement-result" hidden>
+      <div class="statement-head">
+        <div id="outcome-stamp" class="stamp">Approved</div>
+        <div class="statement-head__id">
+          <div id="result-customer-name">&nbsp;</div>
+          <div id="result-customer-id" class="mono muted"></div>
+        </div>
+      </div>
+
+      <section class="statement-section">
+        <h2>Reasoning</h2>
+        <p id="result-reasoning" class="prose"></p>
+      </section>
+
+      <section class="statement-section" id="terms-section" hidden>
+        <h2>Terms</h2>
+        <dl id="terms-list" class="terms"></dl>
+      </section>
+
+      <section class="statement-section" id="citations-section" hidden>
+        <h2>Policy cited</h2>
+        <ul id="citations-list" class="citations"></ul>
+      </section>
+
+      <section class="statement-section">
+        <h2>Agent trace</h2>
+        <ol id="trace-list" class="trace"></ol>
+      </section>
+    </article>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
