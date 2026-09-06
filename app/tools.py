@@ -225,6 +225,17 @@ def _decode_passthrough_fields(tool_name: str, tool_input: dict) -> dict:
 
 
 def dispatch(tool_name: str, tool_input: dict) -> dict:
+    """Public entry point. Never lets an agent-layer exception escape and
+    crash the Supervisor's tool-calling loop — a malformed or unexpected
+    tool call from the LLM should surface as an error result the model can
+    see and react to, not a 500 that ends the whole request."""
+    try:
+        return _dispatch_impl(tool_name, tool_input)
+    except Exception as e:  # noqa: BLE001 - deliberately broad, see docstring
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
     tool_input = _decode_passthrough_fields(tool_name, tool_input)
     if tool_name == "get_customer_profile":
         return customer_profile_agent.get_customer_profile(tool_input["customer_id"])

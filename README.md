@@ -1,5 +1,9 @@
 # bankmind-agent
 
+![Tests](https://github.com/smit080105/bankmind-agent/actions/workflows/tests.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
+
 An agentic AI banking supervisor that uses customer data, RAG, specialized agents,
 policy constraints, and tool calling to provide personalized banking decisions,
 negotiate offers, execute actions, and escalate exceptional cases.
@@ -106,6 +110,20 @@ full agent trace. The API it calls lives under `/api/*`
 ```bash
 python scripts/run_cli.py
 ```
+
+## Testing
+
+The deterministic core — policy engine, RAG retrieval, and the tool
+dispatcher (including the Anthropic/Gemini schema conversion) — is covered
+by pytest. These tests never call an LLM, so they run offline and free:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+CI runs this same suite on every push via GitHub Actions
+(`.github/workflows/tests.yml`).
 
 ## Next phases (not built yet)
 - Phase 2: swap keyword RAG for embeddings + vector store, add more request types
