@@ -3,6 +3,8 @@
 API routes live under /api/* so the dashboard can be mounted at the root
 path without any route-collision ambiguity.
 """
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -13,10 +15,21 @@ from app.database import init_schema, get_conn
 from app.models import Decision, DecisionRequest
 from app.agents import supervisor
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("bankmind")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_schema()
+    yield
+
+
 app = FastAPI(
     title="bankmind-agent",
     description="Agentic AI banking supervisor — Phase 1",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -25,11 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def _startup():
-    init_schema()
 
 
 @app.get("/api/health")
@@ -53,7 +61,17 @@ def decide(req: DecisionRequest):
     try:
         return supervisor.handle_request(req)
     except RuntimeError as e:
+        # Expected, actionable errors (missing API key, unknown provider) —
+        # the message itself is the fix instruction, safe to show as-is.
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        # Anything else (a provider SDK error, a malformed response, etc.)
+        # — log the full traceback server-side for debugging, but still
+        # hand the client a real message instead of a blank 500. Previously
+        # this surfaced as an opaque "Request failed (500)" with nothing to
+        # go on.
+        logger.exception("Unhandled error in /api/decide for customer_id=%s", req.customer_id)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"

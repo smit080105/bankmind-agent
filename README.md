@@ -73,15 +73,20 @@ the engine hasn't pre-approved as a valid range.
 
 The Supervisor's LLM backend is swappable via `LLM_PROVIDER` in `.env`:
 
-- **`gemini`** (default) — free tier, no card required. Get a key at
-  https://aistudio.google.com/apikey. Uses the current `google-genai` SDK
-  (NOT the deprecated `google-generativeai` package).
+- **`groq`** (recommended, default) — genuinely free, no credit card, and
+  no known auth issues. Get a key at https://console.groq.com/keys. Runs
+  open models (Llama 3.3 70B by default) on Groq's own hardware.
+- **`gemini`** — free tier, but as of late 2026 Google AI Studio only
+  issues "AQ." keys, which have a widespread, unresolved bug rejecting
+  them on the standard API with "Expected OAuth 2 access token." Use
+  `groq` or `anthropic` instead until Google fixes this.
 - **`anthropic`** — needs paid API credits at
   https://console.anthropic.com/settings/billing.
 
 Everything else (policy engine, RAG, database, FastAPI, CLI) is identical
-either way — `app/agents/supervisor.py` just dispatches to
-`supervisor_gemini.py` or `supervisor_anthropic.py` based on the setting.
+across all three — `app/agents/supervisor.py` just dispatches to
+`supervisor_groq.py`, `supervisor_gemini.py`, or `supervisor_anthropic.py`
+based on the setting.
 
 ## Setup
 
@@ -94,6 +99,14 @@ python scripts/init_db.py       # creates + seeds data/customers.db
 ```
 
 ## Run
+
+**Docker (if you have Docker Desktop):**
+```bash
+cp .env.example .env   # fill in your LLM_PROVIDER and matching key
+docker compose up --build
+```
+Open **http://localhost:8000/**. The SQLite database persists in a named
+Docker volume across restarts.
 
 **Dashboard (recommended — a real UI):**
 ```bash
