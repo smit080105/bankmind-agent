@@ -124,6 +124,40 @@ TOOLS = [
         },
     },
     {
+        "name": "check_retention_offer_policy",
+        "description": (
+            "Evaluate a retention offer request against hard policy bounds — use this "
+            "when a customer is threatening to close an account or leave for a "
+            "competitor bank, as opposed to negotiating one product's terms."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "customer_id": {"type": "string"},
+                "requested_credit": {
+                    "type": "number",
+                    "description": "The retention credit amount the customer wants or that seems needed to retain them, if known.",
+                },
+                "closing_all_accounts": {
+                    "type": "boolean",
+                    "description": "True if the customer is closing every account (full exit), not just one product.",
+                },
+            },
+            "required": ["customer_id"],
+        },
+    },
+    {
+        "name": "negotiate_retention_offer",
+        "description": "Compute the concrete retention credit from a retention offer policy evaluation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "evaluation": {"type": "object"},
+            },
+            "required": ["evaluation"],
+        },
+    },
+    {
         "name": "execute_action",
         "description": (
             "Execute an approved action and write it to the audit ledger. Only call "
@@ -136,14 +170,15 @@ TOOLS = [
                 "customer_id": {"type": "string"},
                 "action_type": {
                     "type": "string",
-                    "enum": ["loan_rate_change", "fee_waiver", "credit_limit_change"],
+                    "enum": ["loan_rate_change", "fee_waiver", "credit_limit_change", "retention_credit"],
                 },
                 "params": {
                     "type": "object",
                     "description": (
                         "loan_rate_change: {loan_id, new_rate}. "
                         "fee_waiver: {fee_type, amount}. "
-                        "credit_limit_change: {account_id, new_limit, is_temporary}."
+                        "credit_limit_change: {account_id, new_limit, is_temporary}. "
+                        "retention_credit: {credit_amount}."
                     ),
                 },
             },
@@ -179,6 +214,7 @@ _PASSTHROUGH_OBJECT_FIELDS = {
     "negotiate_loan_rate": {"evaluation"},
     "negotiate_fee_waiver": {"evaluation"},
     "negotiate_credit_limit": {"evaluation"},
+    "negotiate_retention_offer": {"evaluation"},
     "execute_action": {"params"},
     "escalate_case": {"context"},
 }
@@ -206,6 +242,27 @@ def _build_gemini_tools() -> list[dict]:
 
 
 GEMINI_TOOLS = _build_gemini_tools()
+
+
+def _build_groq_tools() -> list[dict]:
+    """Groq's API is OpenAI-compatible: each tool wraps under
+    {"type": "function", "function": {...}}. Unlike Gemini, its schema
+    validation is permissive enough to accept our open-ended "object"
+    passthrough fields as-is — no JSON-string workaround needed here."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in TOOLS
+    ]
+
+
+GROQ_TOOLS = _build_groq_tools()
 
 
 def _decode_passthrough_fields(tool_name: str, tool_input: dict) -> dict:
@@ -280,6 +337,18 @@ def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
             tool_input["evaluation"], tool_input["current_limit"]
         )
 
+    if tool_name == "check_retention_offer_policy":
+        from app import database as db
+        customer = db.get_customer(tool_input["customer_id"])
+        return policy_agent.check_retention_offer(
+            customer,
+            tool_input.get("requested_credit"),
+            tool_input.get("closing_all_accounts", False),
+        )
+
+    if tool_name == "negotiate_retention_offer":
+        return negotiation_agent.negotiate_retention_offer(tool_input["evaluation"])
+
     if tool_name == "execute_action":
         action_type = tool_input["action_type"]
         params = tool_input["params"]
@@ -295,6 +364,10 @@ def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
         if action_type == "credit_limit_change":
             return execution_agent.execute_credit_limit_change(
                 customer_id, params.get("account_id"), params["new_limit"], params["is_temporary"]
+            )
+        if action_type == "retention_credit":
+            return execution_agent.execute_retention_credit(
+                customer_id, params["credit_amount"]
             )
         return {"error": f"unknown action_type {action_type}"}
 

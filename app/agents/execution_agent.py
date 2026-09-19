@@ -33,3 +33,10 @@ def execute_credit_limit_change(customer_id: str, account_id: str | None,
     details = {"account_id": account_id, "new_limit": new_limit, "is_temporary": is_temporary}
     db.record_action(customer_id, "credit_limit_change", json.dumps(details), now, "executed")
     return {"status": "executed", "action": "credit_limit_change", **details}
+
+
+def execute_retention_credit(customer_id: str, credit_amount: float) -> dict:
+    now = datetime.datetime.now().isoformat()
+    details = {"credit_amount": credit_amount}
+    db.record_action(customer_id, "retention_credit", json.dumps(details), now, "executed")
+    return {"status": "executed", "action": "retention_credit", **details}

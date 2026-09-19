@@ -123,6 +123,21 @@ select:focus, input:focus, textarea:focus, button:focus-visible {
 
 textarea { resize: vertical; font-family: var(--sans); }
 
+.field--checkbox { margin-bottom: 18px; }
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
+  accent-color: var(--ink);
+}
+
 .segmented {
   display: flex;
   border: 1px solid var(--rule-strong);

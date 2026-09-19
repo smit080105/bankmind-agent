@@ -144,6 +144,36 @@ class TestCreditLimitIncrease:
 # Fee waiver (needs the DB for waiver history)
 # ---------------------------------------------------------------------------
 
+class TestRetentionOffer:
+    def test_eligible_customer_within_authority(self):
+        customer = _customer(tier="gold", relationship_start_date="2018-01-01")
+        result = pe.evaluate_retention_offer(customer, requested_credit=1500, closing_all_accounts=False)
+        assert result["within_agent_authority"] is True
+
+    def test_new_customer_escalates(self):
+        recent = (datetime.date.today() - datetime.timedelta(days=60)).isoformat()
+        customer = _customer(relationship_start_date=recent)
+        result = pe.evaluate_retention_offer(customer, requested_credit=500, closing_all_accounts=False)
+        assert result["within_agent_authority"] is False
+        assert any("Tenure" in r for r in result["escalation_reasons"])
+
+    def test_full_exit_always_escalates(self):
+        customer = _customer(tier="platinum", relationship_start_date="2010-01-01")
+        result = pe.evaluate_retention_offer(customer, requested_credit=100, closing_all_accounts=True)
+        assert result["within_agent_authority"] is False
+        assert any("full exit" in r.lower() for r in result["escalation_reasons"])
+
+    def test_amount_exceeding_tier_cap_escalates(self):
+        customer = _customer(tier="standard")  # cap is 500
+        result = pe.evaluate_retention_offer(customer, requested_credit=5000, closing_all_accounts=False)
+        assert result["within_agent_authority"] is False
+
+    def test_delinquent_customer_escalates(self):
+        customer = _customer(has_active_delinquency=1)
+        result = pe.evaluate_retention_offer(customer, requested_credit=200, closing_all_accounts=False)
+        assert result["within_agent_authority"] is False
+
+
 class TestFeeWaiver:
     def test_first_time_goodwill_waiver_within_authority(self, temp_db):
         customer = _customer(tier="standard")  # 1 waiver/year, 500 cap

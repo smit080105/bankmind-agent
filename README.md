@@ -125,6 +125,20 @@ pytest tests/ -v
 CI runs this same suite on every push via GitHub Actions
 (`.github/workflows/tests.yml`).
 
+## Phase 2 (done)
+
+- **Vector RAG**: `app/rag.py` now indexes policy docs as TF-IDF vectors and
+  ranks retrieval by cosine similarity, instead of Phase 1's plain keyword
+  counting. Runs entirely offline — no embedding API or vector DB needed —
+  and the public interface didn't change, so nothing else in the codebase
+  had to.
+- **New request type: retention offers.** When a customer threatens to
+  leave for a competitor (as opposed to negotiating one product), the
+  Supervisor can check `data/policies/retention_offer.yaml` and offer a
+  tier-capped retention credit, or escalate — automatically, if the
+  customer is closing every account (a full exit), has low tenure, or has
+  an active delinquency.
+
 ## Next phases (not built yet)
 - Phase 2: swap keyword RAG for embeddings + vector store, add more request types
   (overdraft waiver, credit limit increase, retention offers).

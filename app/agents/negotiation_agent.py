@@ -61,3 +61,18 @@ def negotiate_credit_limit(evaluation: dict, current_limit: float) -> dict:
         "new_limit": new_limit,
         "is_temporary": evaluation["is_temporary"],
     }
+
+
+def negotiate_retention_offer(evaluation: dict) -> dict:
+    if not evaluation["within_agent_authority"]:
+        return {"offer_possible": False, "reason": "; ".join(evaluation["escalation_reasons"])}
+
+    max_credit = evaluation["max_credit"]
+    requested = evaluation.get("requested_credit")
+    granted_credit = min(requested, max_credit) if requested is not None else max_credit
+
+    return {
+        "offer_possible": True,
+        "granted_credit": round(granted_credit, 2),
+        "max_credit_available": max_credit,
+    }

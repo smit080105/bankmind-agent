@@ -197,3 +197,46 @@ def _account_age_months(opened_date: str) -> int:
     opened = datetime.date.fromisoformat(opened_date)
     today = datetime.date.today()
     return (today.year - opened.year) * 12 + (today.month - opened.month)
+
+
+# ---------------------------------------------------------------------------
+# Retention offer (customer at risk of leaving entirely)
+# ---------------------------------------------------------------------------
+
+def evaluate_retention_offer(customer: dict, requested_credit: float | None,
+                              closing_all_accounts: bool = False) -> dict[str, Any]:
+    policy = _load_policy("retention_offer")
+    tier = customer["tier"]
+    max_credit = policy["max_retention_credit_by_tier"][tier]
+    min_tenure_months = policy["eligibility_requirements"]["min_tenure_months"]
+
+    years = _years_with_bank(customer["relationship_start_date"])
+    tenure_months = round(years * 12)
+
+    escalation_reasons = []
+    if tenure_months < min_tenure_months:
+        escalation_reasons.append(
+            f"Tenure of {tenure_months} months is below the {min_tenure_months}-month "
+            f"minimum for an agent-level retention offer."
+        )
+    if customer.get("has_active_delinquency"):
+        escalation_reasons.append("Customer has an active delinquency on file.")
+    if closing_all_accounts:
+        escalation_reasons.append(
+            "Customer is closing every account (a full exit), not a single product — "
+            "this requires a human-owned retention strategy."
+        )
+    if requested_credit is not None and requested_credit > max_credit:
+        escalation_reasons.append(
+            f"Requested retention credit {requested_credit} exceeds the {tier} tier cap of {max_credit}."
+        )
+
+    return {
+        "tier": tier,
+        "tenure_months": tenure_months,
+        "max_credit": max_credit,
+        "requested_credit": requested_credit,
+        "closing_all_accounts": closing_all_accounts,
+        "within_agent_authority": len(escalation_reasons) == 0,
+        "escalation_reasons": escalation_reasons,
+    }

@@ -1,0 +1,25 @@
+# Hardcoded retention-incentive bounds for when a customer threatens to
+# close an account or move to a competitor bank entirely (as opposed to
+# just negotiating one product's terms).
+
+policy_id: retention_offer_v1
+description: >
+  Governs the retention credit (waived fees, bonus cash, account credits)
+  an agent may offer a customer who is at risk of leaving, without
+  requiring manager approval.
+
+max_retention_credit_by_tier:
+  # currency, combined value of all incentives in a single retention offer
+  platinum: 5000
+  gold: 2500
+  silver: 1000
+  standard: 500
+
+eligibility_requirements:
+  min_tenure_months: 12
+
+escalation_required_if:
+  - requested_credit_exceeds_tier_max: true
+  - tenure_below_minimum: true
+  - customer_has_active_delinquency: true
+  - customer_closing_all_accounts: true   # full exit, not a single product

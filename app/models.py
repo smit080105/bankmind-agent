@@ -8,6 +8,7 @@ class RequestType(str, Enum):
     LOAN_RATE_NEGOTIATION = "loan_rate_negotiation"
     FEE_WAIVER = "fee_waiver"
     CREDIT_LIMIT_INCREASE = "credit_limit_increase"
+    RETENTION_OFFER = "retention_offer"
 
 
 class DecisionRequest(BaseModel):
@@ -20,11 +21,15 @@ class DecisionRequest(BaseModel):
     # also infer these itself.
     requested_value: Optional[float] = Field(
         default=None,
-        description="e.g. desired rate (8.5), fee amount to waive, or requested credit limit increase."
+        description="e.g. desired rate (8.5), fee amount to waive, requested credit limit increase, or retention credit amount."
     )
     loan_id: Optional[str] = None
     account_id: Optional[str] = None
     fee_type: Optional[str] = None
+    closing_all_accounts: bool = Field(
+        default=False,
+        description="True if the customer is threatening to close every account (a full exit), not just one product."
+    )
 
 
 class TraceStep(BaseModel):

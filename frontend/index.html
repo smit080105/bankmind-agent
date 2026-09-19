@@ -38,6 +38,7 @@
           <button type="button" class="segmented__option is-active" data-value="loan_rate_negotiation">Loan rate</button>
           <button type="button" class="segmented__option" data-value="fee_waiver">Fee waiver</button>
           <button type="button" class="segmented__option" data-value="credit_limit_increase">Credit limit</button>
+          <button type="button" class="segmented__option" data-value="retention_offer">Retention</button>
         </div>
         <input type="hidden" id="request_type" name="request_type" value="loan_rate_negotiation" />
       </div>
@@ -49,7 +50,7 @@
       </div>
 
       <div class="field-row">
-        <div class="field" data-for="loan_rate_negotiation,fee_waiver,credit_limit_increase">
+        <div class="field" data-for="loan_rate_negotiation,fee_waiver,credit_limit_increase,retention_offer">
           <label for="requested_value" id="requested_value_label">Requested rate (%)</label>
           <input type="number" step="0.01" id="requested_value" name="requested_value" />
         </div>
@@ -70,6 +71,13 @@
         </div>
       </div>
 
+      <div class="field field--checkbox" data-for="retention_offer">
+        <label class="checkbox-label">
+          <input type="checkbox" id="closing_all_accounts" name="closing_all_accounts" />
+          Customer is closing every account (full exit), not just one product
+        </label>
+      </div>
+
       <button type="submit" class="submit" id="submit-btn">Route to supervisor</button>
     </form>
 
@@ -79,6 +87,7 @@
       <button type="button" class="samples__item" data-sample="2">Rate cut, delinquent account</button>
       <button type="button" class="samples__item" data-sample="3">First-time overdraft waiver</button>
       <button type="button" class="samples__item" data-sample="4">Temporary limit increase</button>
+      <button type="button" class="samples__item" data-sample="5">Threatening to leave for a competitor</button>
     </div>
   </section>
 

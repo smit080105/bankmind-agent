@@ -39,6 +39,13 @@ SAMPLE_REQUESTS = {
         requested_value=40,
         account_id="ACC2002",
     ),
+    "5": DecisionRequest(
+        customer_id="CUST1005",
+        request_type=RequestType.RETENTION_OFFER,
+        customer_message="A competitor bank offered me a signup bonus — thinking about moving my accounts unless you can offer something.",
+        requested_value=1500,
+        closing_all_accounts=False,
+    ),
 }
 
 
@@ -50,18 +57,19 @@ def main():
         print(f"  {key}. [{req.customer_id}] {req.customer_message}")
     print()
 
-    choice = input("Pick a sample (1-4), or press Enter to build a custom request: ").strip()
+    choice = input("Pick a sample (1-5), or press Enter to build a custom request: ").strip()
 
     if choice in SAMPLE_REQUESTS:
         req = SAMPLE_REQUESTS[choice]
     else:
         customer_id = input("Customer ID: ").strip()
-        print("Request type: 1) loan_rate_negotiation 2) fee_waiver 3) credit_limit_increase")
+        print("Request type: 1) loan_rate_negotiation 2) fee_waiver 3) credit_limit_increase 4) retention_offer")
         rt_choice = input("Choice: ").strip()
         rt_map = {
             "1": RequestType.LOAN_RATE_NEGOTIATION,
             "2": RequestType.FEE_WAIVER,
             "3": RequestType.CREDIT_LIMIT_INCREASE,
+            "4": RequestType.RETENTION_OFFER,
         }
         message = input("Customer message: ").strip()
         req = DecisionRequest(

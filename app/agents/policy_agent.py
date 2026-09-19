@@ -39,3 +39,15 @@ def check_credit_limit_increase(customer: dict, account: dict,
     evaluation["policy_context"] = rag.format_context_for_prompt(context)
     evaluation["citations"] = [f"{c.source}.md — {c.heading}" for c in context]
     return evaluation
+
+
+def check_retention_offer(customer: dict, requested_credit: float | None,
+                           closing_all_accounts: bool) -> dict:
+    evaluation = pe.evaluate_retention_offer(customer, requested_credit, closing_all_accounts)
+    context = rag.retrieve_policy_context(
+        "retention offer credit tenure eligibility full exit escalation",
+        source_filter="retention_offer",
+    )
+    evaluation["policy_context"] = rag.format_context_for_prompt(context)
+    evaluation["citations"] = [f"{c.source}.md — {c.heading}" for c in context]
+    return evaluation

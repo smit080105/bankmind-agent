@@ -61,6 +61,16 @@ class TestDispatch:
         result = dispatch("negotiate_loan_rate", {"evaluation": "{not valid json"})
         assert "error" in result
 
+    def test_negotiate_retention_offer_accepts_json_string(self):
+        evaluation = {
+            "within_agent_authority": True,
+            "max_credit": 2500,
+            "requested_credit": 1500,
+        }
+        result = dispatch("negotiate_retention_offer", {"evaluation": json.dumps(evaluation)})
+        assert result["offer_possible"] is True
+        assert result["granted_credit"] == 1500
+
     def test_unknown_tool_returns_error_dict(self):
         result = dispatch("not_a_real_tool", {})
         assert "error" in result

@@ -19,6 +19,10 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
         from app.agents import supervisor_gemini
         return supervisor_gemini.handle_request(req, max_turns=max_turns)
 
+    if LLM_PROVIDER == "groq":
+        from app.agents import supervisor_groq
+        return supervisor_groq.handle_request(req, max_turns=max_turns)
+
     raise RuntimeError(
-        f"Unknown LLM_PROVIDER '{LLM_PROVIDER}' in .env — use 'gemini' or 'anthropic'."
+        f"Unknown LLM_PROVIDER '{LLM_PROVIDER}' in .env — use 'gemini', 'groq', or 'anthropic'."
     )

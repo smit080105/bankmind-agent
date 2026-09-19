@@ -1,14 +1,23 @@
-"""Lightweight retrieval over the policy markdown documents.
+"""Vector-based retrieval over the policy markdown documents.
 
-Phase 1 uses simple keyword/section scoring — no vector DB, no embedding
-API calls, so the whole project runs offline except for the actual Claude
-calls made by the agents. The public function `retrieve_policy_context` is
-the only thing agents call; swap the internals for a real embedding-based
-vector store later without touching agent code.
+Phase 1 used plain keyword counting. This is a genuine upgrade: policy
+sections are embedded as TF-IDF vectors (term frequency, weighted down for
+words common across all policies) and ranked by cosine similarity — the
+same retrieval math real vector databases use, just computed locally so the
+whole project still runs with zero external services or API keys.
+
+The public interface (`retrieve_policy_context`, `format_context_for_prompt`)
+is unchanged from Phase 1, so nothing in policy_agent.py or the supervisors
+had to change. Swapping this for a hosted embedding API (OpenAI, Gemini
+embeddings) later means rewriting only the index build — callers wouldn't
+need to change at all.
 """
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.config import POLICY_DIR
 
@@ -19,6 +28,53 @@ class RetrievedChunk:
     heading: str
     text: str
     score: float
+
+
+class _PolicyIndex:
+    """Lazily-built TF-IDF index over every policy markdown section.
+
+    Built once per process (policy docs don't change at runtime) and cached
+    on the module — rebuilding a TF-IDF matrix on every single tool call
+    would be wasteful for no benefit.
+    """
+
+    def __init__(self):
+        self.chunks: list[RetrievedChunk] = []
+        self.vectorizer: TfidfVectorizer | None = None
+        self.matrix = None
+        self._build()
+
+    def _build(self):
+        self.chunks = _load_chunks()
+        if not self.chunks:
+            return
+        # Small corpus, so a permissive vectorizer (no aggressive min_df)
+        # keeps every policy's distinctive terms in the vocabulary.
+        self.vectorizer = TfidfVectorizer(
+            stop_words="english",
+            ngram_range=(1, 2),
+        )
+        self.matrix = self.vectorizer.fit_transform([c.text for c in self.chunks])
+
+    def search(self, query: str, top_k: int, source_filter: str | None) -> list[RetrievedChunk]:
+        if not self.chunks or self.vectorizer is None:
+            return []
+
+        query_vec = self.vectorizer.transform([query])
+        similarities = cosine_similarity(query_vec, self.matrix)[0]
+
+        scored = [
+            RetrievedChunk(c.source, c.heading, c.text, float(sim))
+            for c, sim in zip(self.chunks, similarities)
+        ]
+        if source_filter:
+            scored = [c for c in scored if c.source == source_filter]
+
+        scored.sort(key=lambda c: c.score, reverse=True)
+        # A cosine similarity near zero means "no real match" even after
+        # filtering — don't hand the LLM noise it might mistake for
+        # relevant policy text.
+        return [c for c in scored[:top_k] if c.score > 0.05]
 
 
 def _load_chunks() -> list[RetrievedChunk]:
@@ -37,36 +93,20 @@ def _load_chunks() -> list[RetrievedChunk]:
     return chunks
 
 
-_CHUNK_CACHE: list[RetrievedChunk] | None = None
+_INDEX = None
 
 
-def _chunks() -> list[RetrievedChunk]:
-    global _CHUNK_CACHE
-    if _CHUNK_CACHE is None:
-        _CHUNK_CACHE = _load_chunks()
-    return _CHUNK_CACHE
-
-
-def _score(query_terms: set[str], text: str) -> float:
-    text_lower = text.lower()
-    hits = sum(text_lower.count(term) for term in query_terms)
-    return hits / max(len(text.split()), 1) * 1000
+def _get_index() -> _PolicyIndex:
+    global _INDEX
+    if _INDEX is None:
+        _INDEX = _PolicyIndex()
+    return _INDEX
 
 
 def retrieve_policy_context(query: str, top_k: int = 3,
                              source_filter: str | None = None) -> list[RetrievedChunk]:
-    """Keyword-score policy doc sections against `query`, return top_k."""
-    terms = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
-    candidates = _chunks()
-    if source_filter:
-        candidates = [c for c in candidates if c.source == source_filter]
-
-    scored = [
-        RetrievedChunk(c.source, c.heading, c.text, _score(terms, c.text))
-        for c in candidates
-    ]
-    scored.sort(key=lambda c: c.score, reverse=True)
-    return [c for c in scored[:top_k] if c.score > 0]
+    """Vector-search policy doc sections against `query`, return top_k."""
+    return _get_index().search(query, top_k, source_filter)
 
 
 def format_context_for_prompt(chunks: list[RetrievedChunk]) -> str:

@@ -19,6 +19,7 @@ const REQUESTED_VALUE_LABELS = {
   loan_rate_negotiation: "Requested rate (%)",
   fee_waiver: "Fee amount",
   credit_limit_increase: "Requested increase (%)",
+  retention_offer: "Requested retention credit",
 };
 
 const SAMPLES = {
@@ -48,6 +49,13 @@ const SAMPLES = {
     customer_message: "Can I get a temporary credit limit increase of 40% for a large purchase?",
     requested_value: 40,
     account_id: "ACC2002",
+  },
+  5: {
+    customer_id: "CUST1005",
+    request_type: "retention_offer",
+    customer_message: "A competitor bank offered me a signup bonus — thinking about moving my accounts unless you can offer something.",
+    requested_value: 1500,
+    closing_all_accounts: false,
   },
 };
 
@@ -199,6 +207,7 @@ form.addEventListener("submit", (e) => {
   if (accountId) payload.account_id = accountId;
   const feeType = formData.get("fee_type");
   if (feeType) payload.fee_type = feeType;
+  payload.closing_all_accounts = formData.get("closing_all_accounts") === "on";
 
   submitRequest(payload);
 });
@@ -215,6 +224,7 @@ document.querySelectorAll(".samples__item").forEach((btn) => {
     document.getElementById("loan_id").value = sample.loan_id ?? "";
     document.getElementById("account_id").value = sample.account_id ?? "";
     document.getElementById("fee_type").value = sample.fee_type ?? "";
+    document.getElementById("closing_all_accounts").checked = !!sample.closing_all_accounts;
   });
 });
 
