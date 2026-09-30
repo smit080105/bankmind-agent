@@ -30,6 +30,8 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
     citations: set[str] = set()
     outcome = "denied"
     terms: dict = {}
+    case_id = None
+    record_hash = None
 
     for _ in range(max_turns):
         response = client.messages.create(
@@ -54,6 +56,9 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                 reasoning=final_text,
                 policy_citations=sorted(citations),
                 trace=trace,
+                case_id=case_id,
+                record_hash=record_hash,
+                pii_redacted=True,
             )
 
         messages.append({"role": "assistant", "content": response.content})
@@ -70,9 +75,14 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
 
             if block.name == "escalate_case":
                 outcome = "escalated"
+                if isinstance(result, dict):
+                    case_id = result.get("case_id")
+                    record_hash = result.get("record_hash")
             elif block.name == "execute_action":
                 outcome = "approved"
                 terms = result
+                if isinstance(result, dict):
+                    record_hash = result.get("record_hash")
 
             if isinstance(result, dict) and result.get("citations"):
                 citations.update(result["citations"])
@@ -94,4 +104,7 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                   "escalating for manual review as a safety fallback.",
         policy_citations=sorted(citations),
         trace=trace,
+        case_id=case_id,
+        record_hash=record_hash,
+        pii_redacted=True,
     )

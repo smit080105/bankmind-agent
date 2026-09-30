@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BankMind — Supervisor Ledger</title>
+<title>BankMind — Autonomous Banking Supervisor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -14,15 +14,24 @@
 <header class="letterhead">
   <div class="letterhead__inner">
     <div class="letterhead__mark">BankMind</div>
-    <div class="letterhead__meta">Supervisor ledger &middot; Phase 1</div>
+    <div class="letterhead__meta">Enterprise Agentic Supervisor &middot; Phase 3 (HITL &amp; Cryptographic Audit)</div>
   </div>
+  <nav class="nav-tabs" aria-label="Portal Navigation">
+    <button type="button" class="nav-tab is-active" data-view="intake">🏛️ Customer Intake</button>
+    <button type="button" class="nav-tab" data-view="underwriter">🛡️ Underwriter Cockpit <span class="badge" id="escalation-badge">0</span></button>
+    <button type="button" class="nav-tab" data-view="audit">🔐 Cryptographic Audit</button>
+  </nav>
 </header>
 
-<main class="ledger">
+<!-- VIEW 1: INTAKE & STATEMENT -->
+<main class="ledger tab-view" id="view-intake">
 
   <section class="page page--intake" aria-label="New request">
-    <h1>New request</h1>
-    <p class="page__sub">Enter what the customer is asking for. The supervisor will check it against policy before anything is offered.</p>
+    <div class="page-title-row">
+      <h1>New request</h1>
+      <span class="security-chip">🔒 PCI-DSS &amp; PII Sanitizer Active</span>
+    </div>
+    <p class="page__sub">Enter what the customer is asking for. The supervisor orchestrates specialist agents and strictly verifies terms against deterministic policy bounds.</p>
 
     <form id="request-form">
       <div class="field">
@@ -96,12 +105,12 @@
   <section class="page page--statement" aria-label="Decision">
     <div id="statement-empty" class="statement-empty">
       <h1>Statement</h1>
-      <p>Submit a request on the left to see the supervisor's decision, the policy it cites, and the full agent trace.</p>
+      <p>Submit a request on the left to see the supervisor's decision, policy citations, double-entry accounting records, and the full audit trace.</p>
     </div>
 
     <div id="statement-loading" class="statement-loading" hidden>
       <div class="stamp stamp--pending">Reviewing</div>
-      <p class="loading-line">Consulting policy&hellip;</p>
+      <p class="loading-line">Evaluating policy &amp; executing agent chain&hellip;</p>
     </div>
 
     <div id="statement-error" class="statement-error" hidden>
@@ -115,8 +124,13 @@
         <div class="statement-head__id">
           <div id="result-customer-name">&nbsp;</div>
           <div id="result-customer-id" class="mono muted"></div>
+          <div id="result-case-id" class="mono hitl-case-tag" hidden></div>
         </div>
       </div>
+
+      <section class="statement-section" id="hash-section" hidden>
+        <span class="ledger-hash-tag">SHA-256 Block Hash: <span id="result-record-hash" class="mono"></span></span>
+      </section>
 
       <section class="statement-section">
         <h2>Reasoning</h2>
@@ -140,6 +154,92 @@
     </article>
   </section>
 
+</main>
+
+<!-- VIEW 2: UNDERWRITER COCKPIT (HITL) -->
+<main class="cockpit tab-view" id="view-underwriter" hidden>
+  <div class="cockpit__header">
+    <div>
+      <h1>Underwriter Escalation Cockpit</h1>
+      <p class="page__sub">Human-in-the-Loop review queue for requests flagged outside agent authority.</p>
+    </div>
+    <button type="button" class="action-btn" id="refresh-escalations-btn">↻ Refresh Queue</button>
+  </div>
+
+  <div id="escalations-empty" class="cockpit-empty" hidden>
+    <p>✓ All clear. No pending escalations in queue.</p>
+  </div>
+
+  <div id="escalations-list" class="escalations-grid"></div>
+
+  <!-- Review Modal -->
+  <dialog id="review-dialog" class="modal">
+    <form id="review-form" method="dialog">
+      <div class="modal__header">
+        <h2 id="modal-case-title">Review Case</h2>
+        <button type="button" class="close-btn" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div id="modal-case-details" class="case-details"></div>
+
+        <div class="field">
+          <label>Review Determination</label>
+          <div class="segmented" id="review-decision-group">
+            <button type="button" class="segmented__option is-active" data-decision="approve">Approve</button>
+            <button type="button" class="segmented__option" data-decision="override">Override Terms</button>
+            <button type="button" class="segmented__option" data-decision="reject">Reject</button>
+          </div>
+          <input type="hidden" id="review_decision" name="review_decision" value="approve" />
+        </div>
+
+        <div class="field" id="override-field" hidden>
+          <label for="override_value" id="override_label">Overridden term value</label>
+          <input type="number" step="0.01" id="override_value" name="override_value" placeholder="e.g. 9.2 or 75.0" />
+        </div>
+
+        <div class="field">
+          <label for="reviewer_notes">Underwriter Notes &amp; Justification</label>
+          <textarea id="reviewer_notes" name="reviewer_notes" rows="3" required placeholder="State regulatory or relationship justification for this decision..."></textarea>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="submit" class="submit" id="submit-review-btn">Commit Review &amp; Execute</button>
+      </div>
+    </form>
+  </dialog>
+</main>
+
+<!-- VIEW 3: CRYPTOGRAPHIC AUDIT -->
+<main class="cockpit tab-view" id="view-audit" hidden>
+  <div class="cockpit__header">
+    <div>
+      <h1>Cryptographic Audit Ledger</h1>
+      <p class="page__sub">Immutable SHA-256 hash-chained transaction ledger ensuring non-repudiation and regulatory compliance.</p>
+    </div>
+    <button type="button" class="action-btn" id="verify-audit-btn">🛡️ Verify Hash Chain Integrity</button>
+  </div>
+
+  <div id="audit-status-banner" class="status-banner" hidden>
+    <div id="audit-status-text"></div>
+  </div>
+
+  <div class="table-container">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Block #</th>
+          <th>Timestamp</th>
+          <th>Customer</th>
+          <th>Action</th>
+          <th>Outcome</th>
+          <th>SHA-256 Block Hash</th>
+        </tr>
+      </thead>
+      <tbody id="audit-table-body">
+        <tr><td colspan="6" class="muted">Loading audit ledger...</td></tr>
+      </tbody>
+    </table>
+  </div>
 </main>
 
 <script src="app.js"></script>

@@ -49,18 +49,31 @@ class TestHealthAndCustomers:
 
 class TestDecideEndpoint:
     def test_missing_llm_key_returns_actionable_500(self, monkeypatch, tmp_path):
-        """With no API key configured for any provider, /api/decide must
-        fail with a clear, actionable message — not a blank 500. This is
-        the exact bug class that was silently swallowed before main.py
-        was fixed to catch more than just RuntimeError."""
+        """With no API key configured, /api/decide must fail with a clear,
+        actionable message — not a blank 500. This is the exact bug class
+        that was silently swallowed before main.py was fixed to catch more
+        than just RuntimeError.
+
+        Patches the provider module's own GROQ_API_KEY directly (not
+        app.config's), because `from app.config import GROQ_API_KEY` binds
+        the value at import time — patching app.config afterwards wouldn't
+        affect the name already bound inside supervisor_groq. This also
+        means the test is correct regardless of whether a real key is
+        sitting in the developer's actual .env file (it always is, once
+        the project is working) — otherwise this test would silently pass
+        or fail depending on local machine state instead of testing the
+        code path it claims to.
+        """
         client = _client(monkeypatch, tmp_path)
+        monkeypatch.setattr("app.agents.supervisor_groq.GROQ_API_KEY", "")
+
         response = client.post("/api/decide", json={
             "customer_id": "CUST1001",
             "request_type": "loan_rate_negotiation",
             "customer_message": "test",
         })
         assert response.status_code == 500
-        assert "API_KEY" in response.json()["detail"] or "not set" in response.json()["detail"]
+        assert "GROQ_API_KEY" in response.json()["detail"]
 
     def test_successful_decision_round_trips(self, monkeypatch, tmp_path):
         """Mock the Supervisor entirely to verify main.py correctly

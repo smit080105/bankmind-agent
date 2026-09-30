@@ -1,5 +1,6 @@
 const API_BASE = "/api";
 
+// Elements - Intake
 const form = document.getElementById("request-form");
 const customerSelect = document.getElementById("customer");
 const requestTypeGroup = document.getElementById("request-type-group");
@@ -12,7 +13,32 @@ const errorEl = document.getElementById("statement-error");
 const errorMsgEl = document.getElementById("statement-error-message");
 const resultEl = document.getElementById("statement-result");
 
-// Fields whose visibility depends on the selected request type.
+// Elements - Tabs & Cockpit
+const navTabs = document.querySelectorAll(".nav-tab");
+const tabViews = document.querySelectorAll(".tab-view");
+const escalationBadge = document.getElementById("escalation-badge");
+const escalationsList = document.getElementById("escalations-list");
+const escalationsEmpty = document.getElementById("escalations-empty");
+const refreshEscalationsBtn = document.getElementById("refresh-escalations-btn");
+
+// Modal
+const reviewDialog = document.getElementById("review-dialog");
+const reviewForm = document.getElementById("review-form");
+const modalCloseBtn = document.getElementById("modal-close-btn");
+const modalCaseTitle = document.getElementById("modal-case-title");
+const modalCaseDetails = document.getElementById("modal-case-details");
+const reviewDecisionGroup = document.getElementById("review-decision-group");
+const reviewDecisionInput = document.getElementById("review_decision");
+const overrideField = document.getElementById("override-field");
+const overrideValueInput = document.getElementById("override_value");
+let currentReviewCase = null;
+
+// Elements - Audit
+const verifyAuditBtn = document.getElementById("verify-audit-btn");
+const auditStatusBanner = document.getElementById("audit-status-banner");
+const auditStatusText = document.getElementById("audit-status-text");
+const auditTableBody = document.getElementById("audit-table-body");
+
 const conditionalFields = Array.from(document.querySelectorAll(".field[data-for]"));
 
 const REQUESTED_VALUE_LABELS = {
@@ -39,14 +65,14 @@ const SAMPLES = {
   3: {
     customer_id: "CUST1005",
     request_type: "fee_waiver",
-    customer_message: "I was charged a 500 rupee overdraft fee, can you waive it? First time this happens.",
+    customer_message: "I was charged a 500 overdraft fee on account ACC2005, can you waive it? First time this happens.",
     requested_value: 500,
     fee_type: "overdraft",
   },
   4: {
     customer_id: "CUST1002",
     request_type: "credit_limit_increase",
-    customer_message: "Can I get a temporary credit limit increase of 40% for a large purchase?",
+    customer_message: "Can I get a temporary credit limit increase of 40% on card 4532-1111-2222-3333 for a large purchase?",
     requested_value: 40,
     account_id: "ACC2002",
   },
@@ -58,6 +84,22 @@ const SAMPLES = {
     closing_all_accounts: false,
   },
 };
+
+// --- Tab Navigation ---
+navTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    navTabs.forEach((t) => t.classList.remove("is-active"));
+    tab.classList.add("is-active");
+
+    const targetView = tab.dataset.view;
+    tabViews.forEach((v) => {
+      v.hidden = v.id !== `view-${targetView}`;
+    });
+
+    if (targetView === "underwriter") loadEscalations();
+    if (targetView === "audit") loadAuditLedger();
+  });
+});
 
 function setRequestType(value) {
   requestTypeInput.value = value;
@@ -126,6 +168,23 @@ function renderDecision(decision) {
     customerSelect.options[customerSelect.selectedIndex]?.text.split(" — ")[0] || "";
   document.getElementById("result-customer-id").textContent = decision.customer_id;
 
+  const caseIdEl = document.getElementById("result-case-id");
+  if (decision.case_id) {
+    caseIdEl.textContent = `Escalation Case: ${decision.case_id}`;
+    caseIdEl.hidden = false;
+  } else {
+    caseIdEl.hidden = true;
+  }
+
+  const hashSec = document.getElementById("hash-section");
+  const hashEl = document.getElementById("result-record-hash");
+  if (decision.record_hash) {
+    hashEl.textContent = decision.record_hash;
+    hashSec.hidden = false;
+  } else {
+    hashSec.hidden = true;
+  }
+
   document.getElementById("result-reasoning").textContent = decision.reasoning;
 
   const termsSection = document.getElementById("terms-section");
@@ -164,6 +223,7 @@ function renderDecision(decision) {
   }
 
   showState("result");
+  updateEscalationBadge();
 }
 
 async function submitRequest(payload) {
@@ -173,7 +233,10 @@ async function submitRequest(payload) {
   try {
     const res = await fetch(`${API_BASE}/decide`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": `IDEMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -228,5 +291,167 @@ document.querySelectorAll(".samples__item").forEach((btn) => {
   });
 });
 
+// --- Underwriter Cockpit (HITL) Logic ---
+async function updateEscalationBadge() {
+  try {
+    const res = await fetch(`${API_BASE}/escalations?status=pending`);
+    const data = await res.json();
+    escalationBadge.textContent = data.length || 0;
+  } catch (_) {}
+}
+
+async function loadEscalations() {
+  try {
+    const res = await fetch(`${API_BASE}/escalations?status=pending`);
+    const escalations = await res.json();
+    escalationBadge.textContent = escalations.length || 0;
+
+    escalationsList.innerHTML = "";
+    if (escalations.length === 0) {
+      escalationsEmpty.hidden = false;
+      return;
+    }
+    escalationsEmpty.hidden = true;
+
+    for (const esc of escalations) {
+      const card = document.createElement("div");
+      card.className = "escalation-card";
+      card.innerHTML = `
+        <div class="escalation-card__head">
+          <h3 class="escalation-card__title mono">${esc.case_id}</h3>
+          <span class="hitl-case-tag">${esc.request_type.replace(/_/g, " ")}</span>
+        </div>
+        <div class="escalation-card__body">
+          <div><strong>Customer:</strong> ${esc.customer_id}</div>
+          <div><strong>Requested Value:</strong> ${esc.requested_value !== null ? esc.requested_value : "N/A"}</div>
+          <ul class="escalation-card__reasons">
+            ${(esc.reasons || []).map((r) => `<li>${r}</li>`).join("")}
+          </ul>
+        </div>
+        <button type="button" class="review-btn">Review Case</button>
+      `;
+      card.querySelector(".review-btn").addEventListener("click", () => openReviewModal(esc));
+      escalationsList.appendChild(card);
+    }
+  } catch (err) {
+    escalationsList.innerHTML = `<p class="muted">Failed to load escalations: ${err.message}</p>`;
+  }
+}
+
+refreshEscalationsBtn.addEventListener("click", loadEscalations);
+
+function openReviewModal(esc) {
+  currentReviewCase = esc;
+  modalCaseTitle.textContent = `Review ${esc.case_id}`;
+  modalCaseDetails.innerHTML = `
+    <strong>Customer:</strong> ${esc.customer_id}<br/>
+    <strong>Request:</strong> ${esc.request_type.replace(/_/g, " ")}<br/>
+    <strong>Flagged Reasons:</strong> ${(esc.reasons || []).join("; ")}
+  `;
+  reviewDialog.showModal();
+}
+
+modalCloseBtn.addEventListener("click", () => reviewDialog.close());
+
+reviewDecisionGroup.addEventListener("click", (e) => {
+  const btn = e.target.closest(".segmented__option");
+  if (!btn) return;
+  for (const b of reviewDecisionGroup.querySelectorAll(".segmented__option")) {
+    b.classList.toggle("is-active", b === btn);
+  }
+  reviewDecisionInput.value = btn.dataset.decision;
+  overrideField.hidden = btn.dataset.decision !== "override";
+});
+
+reviewForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!currentReviewCase) return;
+
+  const decision = reviewDecisionInput.value;
+  const notes = document.getElementById("reviewer_notes").value;
+  let overriddenTerms = null;
+
+  if (decision === "override") {
+    const val = parseFloat(overrideValueInput.value);
+    if (!isNaN(val)) {
+      if (currentReviewCase.request_type === "loan_rate_negotiation") overriddenTerms = { new_rate: val };
+      if (currentReviewCase.request_type === "fee_waiver") overriddenTerms = { waived_amount: val };
+      if (currentReviewCase.request_type === "credit_limit_increase") overriddenTerms = { new_limit: val };
+      if (currentReviewCase.request_type === "retention_offer") overriddenTerms = { credit_amount: val };
+    }
+  }
+
+  const payload = {
+    decision,
+    reviewer_notes: notes,
+    overridden_terms: overriddenTerms,
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/escalations/${currentReviewCase.case_id}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Review failed");
+    }
+    reviewDialog.close();
+    loadEscalations();
+    updateEscalationBadge();
+  } catch (err) {
+    alert(`Could not complete review: ${err.message}`);
+  }
+});
+
+// --- Cryptographic Audit Logic ---
+async function loadAuditLedger() {
+  try {
+    const res = await fetch(`${API_BASE}/audit/ledger`);
+    const records = await res.json();
+    auditTableBody.innerHTML = "";
+    if (records.length === 0) {
+      auditTableBody.innerHTML = `<tr><td colspan="6" class="muted">No transactions executed yet.</td></tr>`;
+      return;
+    }
+    for (const r of records) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono">#${r.id}</td>
+        <td class="muted">${r.executed_on.slice(0, 19).replace("T", " ")}</td>
+        <td class="mono">${r.customer_id}</td>
+        <td>${r.action_type}</td>
+        <td><span class="stamp stamp--${r.outcome}" style="font-size:0.65rem;padding:2px 6px;">${r.outcome}</span></td>
+        <td class="mono" style="font-size:0.75rem;">${r.record_hash ? r.record_hash.slice(0, 20) + "…" : "—"}</td>
+      `;
+      auditTableBody.appendChild(tr);
+    }
+  } catch (err) {
+    auditTableBody.innerHTML = `<tr><td colspan="6" class="muted">Error: ${err.message}</td></tr>`;
+  }
+}
+
+verifyAuditBtn.addEventListener("click", async () => {
+  verifyAuditBtn.disabled = true;
+  verifyAuditBtn.textContent = "Verifying Chain…";
+  try {
+    const res = await fetch(`${API_BASE}/audit/verify`);
+    const data = await res.json();
+    auditStatusBanner.hidden = false;
+    auditStatusBanner.className = `status-banner ${data.valid ? "is-valid" : "is-invalid"}`;
+    auditStatusText.innerHTML = `<strong>${data.valid ? "✓ SHA-256 Chain Verified" : "⚠ Chain Tamper Alert"}</strong> — ${data.message} (${data.total_records} blocks verified).`;
+  } catch (err) {
+    auditStatusBanner.hidden = false;
+    auditStatusBanner.className = "status-banner is-invalid";
+    auditStatusText.textContent = `Verification error: ${err.message}`;
+  } finally {
+    verifyAuditBtn.disabled = false;
+    verifyAuditBtn.textContent = "🛡️ Verify Hash Chain Integrity";
+  }
+});
+
+// Initialize
 setRequestType("loan_rate_negotiation");
 loadCustomers();
+updateEscalationBadge();

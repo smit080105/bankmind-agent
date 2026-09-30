@@ -26,8 +26,12 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 # Groq: a genuinely free, no-credit-card tier (rate-limited, not credit-
 # limited) running open models on their own hardware. No known auth bugs
 # as of late 2026, unlike Gemini's AQ.-key issue above — a good fallback.
+# NOTE: Groq moved llama-3.3-70b-versatile and several other models to
+# Enterprise-only access as of mid/late 2026 — openai/gpt-oss-120b remains
+# on the free tier with full tool-calling support. Check
+# https://console.groq.com/docs/models if this one also gets deprecated.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "data/customers.db")
 POLICY_DIR = BASE_DIR / "data" / "policies"
