@@ -8,6 +8,7 @@ import pytest
 from app import policy_engine as pe
 
 
+@pytest.mark.usefixtures("temp_db")
 class TestAdversarialDefenseBenchmark:
     """10-Scenario Red-Teaming Security Benchmark."""
 
