@@ -18,12 +18,9 @@ CUSTOMERS = [
     ("CUST1001", "Ananya Rao", "gold", 742, "active", "2018-03-12", 0),
     ("CUST1002", "Devansh Mehta", "platinum", 781, "active", "2011-07-01", 0),
     ("CUST1003", "Priya Nair", "standard", 601, "active", "2023-01-20", 0),
-    ("CUST1004", "Rohan Kulkarni", "silver", 655, "active", "delinquent-flag", 1),
-    ("CUST1005", "Kabir Shah", "gold", 710, "good_standing", "2016-09-05", 0),
+    ("CUST1004", "Rohan Kulkarni", "silver", 655, "active", "2015-05-10", 1),
+    ("CUST1005", "Kabir Shah", "gold", 710, "active", "2016-09-05", 0),
 ]
-
-# Fix Rohan's relationship_start_date typo above (placeholder replaced below)
-CUSTOMERS[3] = ("CUST1004", "Rohan Kulkarni", "silver", 655, "active", "2015-05-10", 1)
 
 ACCOUNTS = [
     # account_id, customer_id, account_type, balance, credit_limit,
@@ -47,24 +44,46 @@ def main():
     init_schema()
     with get_conn() as conn:
         conn.executemany(
-            """INSERT OR REPLACE INTO customers
+            """INSERT INTO customers
                (customer_id, full_name, tier, credit_score, account_status,
                 relationship_start_date, has_active_delinquency)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(customer_id) DO UPDATE SET
+                   full_name = excluded.full_name,
+                   tier = excluded.tier,
+                   credit_score = excluded.credit_score,
+                   account_status = excluded.account_status,
+                   relationship_start_date = excluded.relationship_start_date,
+                   has_active_delinquency = excluded.has_active_delinquency""",
             CUSTOMERS,
         )
         conn.executemany(
-            """INSERT OR REPLACE INTO accounts
+            """INSERT INTO accounts
                (account_id, customer_id, account_type, balance, credit_limit,
                 current_utilization_pct, opened_date, missed_payments_last_6mo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(account_id) DO UPDATE SET
+                   customer_id = excluded.customer_id,
+                   account_type = excluded.account_type,
+                   balance = excluded.balance,
+                   credit_limit = excluded.credit_limit,
+                   current_utilization_pct = excluded.current_utilization_pct,
+                   opened_date = excluded.opened_date,
+                   missed_payments_last_6mo = excluded.missed_payments_last_6mo""",
             ACCOUNTS,
         )
         conn.executemany(
-            """INSERT OR REPLACE INTO loans
+            """INSERT INTO loans
                (loan_id, customer_id, loan_type, principal, current_rate,
                 origination_date, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(loan_id) DO UPDATE SET
+                   customer_id = excluded.customer_id,
+                   loan_type = excluded.loan_type,
+                   principal = excluded.principal,
+                   current_rate = excluded.current_rate,
+                   origination_date = excluded.origination_date,
+                   status = excluded.status""",
             LOANS,
         )
     print(f"Seeded {len(CUSTOMERS)} customers, {len(ACCOUNTS)} accounts, {len(LOANS)} loans.")
