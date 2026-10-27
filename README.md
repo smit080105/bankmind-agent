@@ -4,19 +4,19 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
 ![Audit: SHA--256 Chained](https://img.shields.io/badge/audit-SHA--256%20chained-success.svg)
-![Security: PCI--DSS Redacted](https://img.shields.io/badge/security-PII%20sanitized-brightgreen.svg)
+![Security: PII Sanitization](https://img.shields.io/badge/security-PII%20sanitization-brightgreen.svg)
 
-An enterprise-grade agentic AI banking supervisor that couples **deterministic policy engines** with **LLM orchestration** to deliver personalized banking terms, execute balanced double-entry financial transactions, manage human-in-the-loop (HITL) escalations, and cryptographically audit every decision.
+A portfolio project demonstrating an agentic banking workflow that combines **deterministic policy checks** with **LLM orchestration** to evaluate requests, manage human-in-the-loop (HITL) escalations, record double-entry transactions, and maintain a tamper-evident audit chain.
 
 ---
 
-## Architecture & Enterprise Design
+## Architecture Overview
 
 ```
 Customer Request (Web / API)
        │
        ▼
- [PII & PCI-DSS Sanitizer]  <-- Tokenizes card numbers, accounts, emails, phone numbers
+ [PII Sanitizer]            <-- Masks patterns in the customer message
        │
        ▼
 [Supervisor Orchestrator]   <-- Groq (Llama/GPT-OSS), Gemini, or Claude tool-calling
@@ -28,7 +28,7 @@ Customer Request (Web / API)
     Decision Gate:
        ├── [Within Bounds] ───────► ExecutionAgent
        │                                  ├── Balanced Double-Entry Journal (Debits == Credits)
-       │                                  └── Cryptographic SHA-256 Chained Audit Ledger
+       │                                  └── SHA-256 Chained Audit Ledger
        │
        └── [Policy Exception] ────► EscalationAgent
                                           └── Asynchronous HITL Underwriter Cockpit
@@ -37,32 +37,25 @@ Customer Request (Web / API)
 
 ### Core Architecture Highlights
 
-1. **Zero Hallucination of Financial Terms**: The LLM is an orchestrator and customer-facing relationship manager, *never* an arithmetic calculator. Interest rates, fee caps, and credit limits are computed deterministically via YAML rules in `data/policies/*.yaml`.
-2. **FinTech Security & PCI-DSS/PII Masking**: Pre-LLM sanitization proxy tokenizes sensitive identifiers (`[CARD_TOKEN_1]`, `[ACCOUNT_TOKEN_1]`) so raw financial data is never leaked to external AI providers.
-3. **Cryptographically Chained Audit Ledger**: Every action is hashed using SHA-256 chained to the preceding block ($\text{Hash}_n = \text{SHA256}(\text{Hash}_{n-1} + \dots)$). Any manual database tampering breaks the cryptographic chain and is detected instantly.
+1. **Deterministic Policy Checks**: The LLM orchestrates tools; policy limits and eligibility decisions are evaluated by Python rules using YAML policy data in `data/policies/*.yaml`.
+2. **PII Sanitization**: The customer message is sanitized before it is sent to the LLM provider. This is a project-level safeguard, not a claim of PCI-DSS compliance.
+3. **Tamper-Evident Audit Chain**: Action records are linked using SHA-256 hashes. The verification endpoint checks returned ledger records for changes that break the chain.
 4. **Double-Entry General Ledger (GL)**: Financial actions (fee waivers, retention credits) produce balanced double-entry accounting journals adhering to $\sum \text{Debits} == \sum \text{Credits}$.
 5. **Human-in-the-Loop (HITL) Escalation Queue**: Policy exceptions enter a stateful queue (`ESC-...`), enabling underwriters and relationship managers to inspect customer risk profiles, override terms with regulatory notes, and trigger downstream execution.
 6. **API Request Idempotency**: Header `Idempotency-Key` prevents duplicate transaction processing or double-waivers during network retries.
-7. **Adversarial Red-Teaming Benchmark**: Hardened against prompt injection, roleplay spoofing, active delinquency concealment, and authority escalation.
+7. **Adversarial Policy Tests**: Deterministic policy tests cover requests such as excessive waivers, delinquency, high utilization, and attempts to bypass underwriting. They do not measure an LLM's general prompt-injection resistance.
 
 ---
 
-## Enterprise Benchmark & Evals
+## Offline Evaluation
 
-BankMind includes an automated evaluation benchmark (`scripts/run_evals.py`):
+Run the offline regression suite with:
 
 ```bash
 python scripts/run_evals.py
 ```
 
-| Benchmark Metric | Result | Target | Verification Method |
-| :--- | :--- | :--- | :--- |
-| **Policy Adherence Rate** | **100.0%** | 100% | Zero financial term generation without policy approval |
-| **Adversarial Jailbreak Resistance** | **100.0%** | 100% | 10/10 Prompt injection and social engineering attacks blocked |
-| **Audit Ledger Cryptographic Integrity** | **VERIFIED** | 100% | SHA-256 hash-chain validation across all ledger blocks |
-| **PII & PCI-DSS Tokenization** | **VERIFIED** | 100% | Bi-directional card, account, email, and phone masking |
-| **Double-Entry GL Balancing** | **VERIFIED** | 100% | Strict enforcement: $\sum \text{Debits} == \sum \text{Credits}$ |
-| **Request Idempotency Replay Safety** | **VERIFIED** | 100% | Cached zero-redundancy response on identical keys |
+The runner executes pytest without requiring live LLM credentials and reports test counts from pytest's JUnit report. Tests cover policy evaluation, tool dispatch, sanitization, audit-chain verification, accounting, API behavior, and HITL workflows. Results depend on the current test run; no fixed benchmark scores are presented.
 
 ---
 
@@ -89,8 +82,8 @@ Open **http://localhost:8000/**.
 | `GET` | `/api/escalations` | Lists pending escalations in the HITL underwriter queue. |
 | `GET` | `/api/escalations/{case_id}` | Retrieves full context and risk flags for an escalated case. |
 | `POST` | `/api/escalations/{case_id}/review` | Approves, rejects, or overrides an escalated case with audit trail. |
-| `GET` | `/api/audit/verify` | Cryptographically verifies the SHA-256 audit ledger hash chain. |
-| `GET` | `/api/audit/ledger` | Returns immutable audit blocks. |
+| `GET` | `/api/audit/verify` | Verifies the returned audit records against the SHA-256 hash chain. |
+| `GET` | `/api/audit/ledger` | Returns audit records linked by the SHA-256 hash chain. |
 | `GET` | `/api/accounting/ledger` | Inspects balanced double-entry General Ledger journal records. |
 | `GET` | `/api/customers` | Populates customer selector. |
 | `GET` | `/api/health` | Health check endpoint. |

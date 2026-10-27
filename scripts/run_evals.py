@@ -1,48 +1,61 @@
-"""Automated FinTech & AI Agent Evaluation Benchmark Runner.
-
-Runs a battery of enterprise metrics:
-1. Deterministic Policy Adherence (100% Target)
-2. Adversarial Red-Teaming & Prompt Injection Defense (10 Scenarios)
-3. Cryptographic Audit Ledger Integrity (SHA-256 Hash Chaining)
-4. FinTech PII/PCI-DSS Tokenization & Masking
-5. Double-Entry General Ledger Balance (Sum(Debits) == Sum(Credits))
-6. Human-in-the-Loop (HITL) Escalation State Machine
-"""
+"""Run the offline test suite and report measured results."""
 import sys
 import subprocess
 import time
+import tempfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+
+def summarize_junit_report(report_path: Path) -> dict[str, int]:
+    """Count test outcomes from pytest's JUnit XML report."""
+    totals = {"total": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+    for testcase in ET.parse(report_path).iter("testcase"):
+        totals["total"] += 1
+        if testcase.find("skipped") is not None:
+            totals["skipped"] += 1
+        elif testcase.find("failure") is not None:
+            totals["failed"] += 1
+        elif testcase.find("error") is not None:
+            totals["errors"] += 1
+        else:
+            totals["passed"] += 1
+    return totals
 
 
 def main():
     print("=" * 72)
-    print("  BANKMIND-AGENT ENTERPRISE BENCHMARK & EVALUATION SUITE")
+    print("  BANKMIND OFFLINE EVALUATION")
     print("=" * 72)
     print(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
-    print("Executing offline deterministic verification suite...\n")
+    print("Running the offline pytest suite...\n")
 
-    cmd = [sys.executable, "-m", "pytest", "tests/", "-q", "--disable-warnings"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    with tempfile.TemporaryDirectory(prefix="bankmind-evals-") as temp_dir:
+        report_path = Path(temp_dir) / "results.xml"
+        cmd = [
+            sys.executable, "-m", "pytest", "tests/", "-q", "--disable-warnings",
+            f"--junitxml={report_path}",
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
 
-    print(result.stdout)
-    if result.stderr:
-        print(result.stderr)
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print(result.stderr, end="" if result.stderr.endswith("\n") else "\n")
 
-    if result.returncode != 0:
-        print("\n❌ EVALUATION FAILED: Not all test suites passed.")
-        sys.exit(1)
+        totals = summarize_junit_report(report_path)
 
     print("-" * 72)
-    print("  ENTERPRISE METRIC SCORECARD")
-    print("-" * 72)
-    print("  [✓] Policy Adherence Rate:              100.0%  (Zero unapproved terms)")
-    print("  [✓] Adversarial Red-Teaming Defense:    100.0%  (10/10 attacks mitigated)")
-    print("  [✓] Cryptographic Audit Chain:          VERIFIED (SHA-256 Tamper-evident)")
-    print("  [✓] FinTech PII/PCI-DSS Sanitization:   VERIFIED (Bi-directional masking)")
-    print("  [✓] Double-Entry Accounting Balancing:  VERIFIED (Debits == Credits)")
-    print("  [✓] HITL Underwriter State Machine:     VERIFIED (Pause/Resume/Override)")
-    print("  [✓] Request Idempotency Engine:         VERIFIED (Replay safe)")
+    print(
+        "  Tests: {total} | Passed: {passed} | Failed: {failed} | "
+        "Errors: {errors} | Skipped: {skipped}".format(**totals)
+    )
+    status = "PASS" if result.returncode == 0 else "FAIL"
+    print(f"  RESULT: {status}")
     print("=" * 72)
-    print("  STATUS: PRODUCTION-READY (ENTERPRISE AUDIT GRADE)\n")
+    sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
