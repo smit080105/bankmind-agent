@@ -83,6 +83,11 @@ def decide(req: DecisionRequest, response: Response, idempotency_key: Optional[s
         request_hash = hashlib.sha256(req.model_dump_json().encode("utf-8")).hexdigest()
         cached = get_idempotency_record(idempotency_key)
         if cached:
+            if cached["request_hash"] != request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key was already used with a different request.",
+                )
             response.headers["X-Cache-Hit"] = "true"
             return Decision.model_validate_json(cached["response_body"])
 

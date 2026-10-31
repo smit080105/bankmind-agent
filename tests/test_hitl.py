@@ -129,3 +129,10 @@ class TestHITLEscalationWorkflow:
         assert resp2.json()["outcome"] == "approved"
         # Crucial: Supervisor handle_request was NOT called a second time
         assert call_count == 1
+
+        changed_payload = {**payload, "requested_value": 50.0}
+        resp3 = client.post("/api/decide", json=changed_payload, headers=headers)
+        assert resp3.status_code == 409
+        assert resp3.json()["detail"] == "Idempotency-Key was already used with a different request."
+        assert resp3.headers.get("X-Cache-Hit") is None
+        assert call_count == 1
