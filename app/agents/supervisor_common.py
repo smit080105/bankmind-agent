@@ -39,11 +39,15 @@ outcome. Do not fabricate policy language that wasn't in a tool result.
 """
 
 
+from app.security.sanitizer import PIISanitizer
+
+
 def customer_request_text(req) -> str:
+    sanitized_msg, _ = PIISanitizer.sanitize(req.customer_message)
     parts = [
         f"Customer ID: {req.customer_id}",
         f"Request type: {req.request_type.value}",
-        f"Customer said: \"{req.customer_message}\"",
+        f"Customer said: \"{sanitized_msg}\"",
     ]
     if req.requested_value is not None:
         parts.append(f"Extracted requested value: {req.requested_value}")

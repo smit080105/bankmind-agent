@@ -14,7 +14,7 @@ import json
 from google import genai
 from google.genai import types
 
-from app.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_USE_VERTEX_EXPRESS
 from app.models import Decision, DecisionRequest, TraceStep
 from app.tools import GEMINI_TOOLS, dispatch
 from app.agents.supervisor_common import (
@@ -49,7 +49,7 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
             "https://aistudio.google.com/apikey and add it to .env."
         )
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY, vertexai=GEMINI_USE_VERTEX_EXPRESS)
     tool = _build_tool()
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
@@ -65,6 +65,8 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
     citations: set[str] = set()
     outcome = "denied"
     terms: dict = {}
+    case_id = None
+    record_hash = None
 
     for _ in range(max_turns):
         response = client.models.generate_content(
@@ -87,6 +89,9 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                 reasoning=final_text,
                 policy_citations=sorted(citations),
                 trace=trace,
+                case_id=case_id,
+                record_hash=record_hash,
+                pii_redacted=True,
             )
 
         # Echo the model's turn (including its function_call parts) back into
@@ -108,9 +113,14 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
 
             if fc.name == "escalate_case":
                 outcome = "escalated"
+                if isinstance(result, dict):
+                    case_id = result.get("case_id")
+                    record_hash = result.get("record_hash")
             elif fc.name == "execute_action":
                 outcome = "approved"
                 terms = result
+                if isinstance(result, dict):
+                    record_hash = result.get("record_hash")
 
             if isinstance(result, dict) and result.get("citations"):
                 citations.update(result["citations"])
@@ -133,4 +143,7 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                   "escalating for manual review as a safety fallback.",
         policy_citations=sorted(citations),
         trace=trace,
+        case_id=case_id,
+        record_hash=record_hash,
+        pii_redacted=True,
     )

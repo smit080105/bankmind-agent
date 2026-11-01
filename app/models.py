@@ -17,8 +17,6 @@ class DecisionRequest(BaseModel):
     customer_message: str = Field(
         ..., description="What the customer actually asked for, in their words."
     )
-    # Optional structured hints extracted from the message; the Supervisor can
-    # also infer these itself.
     requested_value: Optional[float] = Field(
         default=None,
         description="e.g. desired rate (8.5), fee amount to waive, requested credit limit increase, or retention credit amount."
@@ -46,3 +44,19 @@ class Decision(BaseModel):
     reasoning: str
     policy_citations: list[str] = Field(default_factory=list)
     trace: list[TraceStep] = Field(default_factory=list)
+    case_id: Optional[str] = Field(default=None, description="Tracked case ID if escalated to HITL queue")
+    record_hash: Optional[str] = Field(default=None, description="Cryptographic SHA-256 ledger hash for audit integrity")
+    pii_redacted: bool = Field(default=False, description="Whether sensitive PII was masked before LLM processing")
+
+
+class EscalationReviewRequest(BaseModel):
+    decision: str = Field(..., description="'approve', 'reject', or 'override'")
+    reviewer_notes: str = Field(..., description="Justification and notes from underwriter/RM")
+    overridden_terms: Optional[dict[str, Any]] = Field(default=None, description="Terms overridden by underwriter")
+
+
+class AuditVerificationResponse(BaseModel):
+    valid: bool
+    message: str
+    total_records: int
+    broken_at_id: Optional[int] = None

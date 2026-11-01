@@ -7,7 +7,21 @@ functions. Both shapes need to keep working.
 """
 import json
 
-from app.tools import TOOLS, GEMINI_TOOLS, dispatch
+from app.tools import TOOLS, GEMINI_TOOLS, GROQ_TOOLS, dispatch
+
+
+class TestGroqToolConversion:
+    def test_same_tool_count_and_names(self):
+        assert len(TOOLS) == len(GROQ_TOOLS)
+        groq_names = {t["function"]["name"] for t in GROQ_TOOLS}
+        assert groq_names == {t["name"] for t in TOOLS}
+
+    def test_wraps_openai_function_calling_shape(self):
+        loan_tool = next(t for t in GROQ_TOOLS if t["function"]["name"] == "negotiate_loan_rate")
+        assert loan_tool["type"] == "function"
+        assert "parameters" in loan_tool["function"]
+        # Unlike Gemini, Groq keeps the open-ended object schema as-is.
+        assert loan_tool["function"]["parameters"]["properties"]["evaluation"]["type"] == "object"
 
 
 class TestGeminiToolConversion:

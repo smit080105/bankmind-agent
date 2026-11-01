@@ -1,5 +1,29 @@
 const API_BASE = "/api";
 
+async function requestJson(path, options) {
+  const response = await fetch(`${API_BASE}${path}`, options);
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    const detail = body && typeof body === "object" ? body.detail : null;
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
+  if (body === null) throw new Error("The server returned an invalid response.");
+  return body;
+}
+
+function textElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text ?? "";
+  return element;
+}
+
+// Elements - Intake
 const form = document.getElementById("request-form");
 const customerSelect = document.getElementById("customer");
 const requestTypeGroup = document.getElementById("request-type-group");
@@ -12,7 +36,33 @@ const errorEl = document.getElementById("statement-error");
 const errorMsgEl = document.getElementById("statement-error-message");
 const resultEl = document.getElementById("statement-result");
 
-// Fields whose visibility depends on the selected request type.
+// Elements - Tabs & Cockpit
+const navTabs = document.querySelectorAll(".nav-tab");
+const tabViews = document.querySelectorAll(".tab-view");
+const escalationBadge = document.getElementById("escalation-badge");
+const escalationsList = document.getElementById("escalations-list");
+const escalationsEmpty = document.getElementById("escalations-empty");
+const refreshEscalationsBtn = document.getElementById("refresh-escalations-btn");
+
+// Modal
+const reviewDialog = document.getElementById("review-dialog");
+const reviewForm = document.getElementById("review-form");
+const modalCloseBtn = document.getElementById("modal-close-btn");
+const modalCaseTitle = document.getElementById("modal-case-title");
+const modalCaseDetails = document.getElementById("modal-case-details");
+const reviewDecisionGroup = document.getElementById("review-decision-group");
+const reviewDecisionInput = document.getElementById("review_decision");
+const overrideField = document.getElementById("override-field");
+const overrideValueInput = document.getElementById("override_value");
+const reviewError = document.getElementById("review-error");
+let currentReviewCase = null;
+
+// Elements - Audit
+const verifyAuditBtn = document.getElementById("verify-audit-btn");
+const auditStatusBanner = document.getElementById("audit-status-banner");
+const auditStatusText = document.getElementById("audit-status-text");
+const auditTableBody = document.getElementById("audit-table-body");
+
 const conditionalFields = Array.from(document.querySelectorAll(".field[data-for]"));
 
 const REQUESTED_VALUE_LABELS = {
@@ -39,14 +89,14 @@ const SAMPLES = {
   3: {
     customer_id: "CUST1005",
     request_type: "fee_waiver",
-    customer_message: "I was charged a 500 rupee overdraft fee, can you waive it? First time this happens.",
+    customer_message: "I was charged a 500 overdraft fee on account ACC2005, can you waive it? First time this happens.",
     requested_value: 500,
     fee_type: "overdraft",
   },
   4: {
     customer_id: "CUST1002",
     request_type: "credit_limit_increase",
-    customer_message: "Can I get a temporary credit limit increase of 40% for a large purchase?",
+    customer_message: "Can I get a temporary credit limit increase of 40% on card 4532-1111-2222-3333 for a large purchase?",
     requested_value: 40,
     account_id: "ACC2002",
   },
@@ -59,10 +109,48 @@ const SAMPLES = {
   },
 };
 
+// --- Tab Navigation ---
+navTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    navTabs.forEach((t) => {
+      t.classList.remove("is-active");
+      t.setAttribute("aria-selected", "false");
+      t.tabIndex = -1;
+    });
+    tab.classList.add("is-active");
+    tab.setAttribute("aria-selected", "true");
+    tab.tabIndex = 0;
+
+    const targetView = tab.dataset.view;
+    tabViews.forEach((v) => {
+      v.hidden = v.id !== `view-${targetView}`;
+    });
+
+    if (targetView === "underwriter") loadEscalations();
+    if (targetView === "audit") loadAuditLedger();
+  });
+
+  tab.addEventListener("keydown", (event) => {
+    const tabs = Array.from(navTabs);
+    const index = tabs.indexOf(tab);
+    let nextIndex;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex !== undefined) {
+      event.preventDefault();
+      tabs[nextIndex].click();
+      tabs[nextIndex].focus();
+    }
+  });
+});
+
 function setRequestType(value) {
   requestTypeInput.value = value;
   for (const btn of requestTypeGroup.querySelectorAll(".segmented__option")) {
     btn.classList.toggle("is-active", btn.dataset.value === value);
+    btn.setAttribute("aria-pressed", String(btn.dataset.value === value));
   }
   document.getElementById("requested_value_label").textContent =
     REQUESTED_VALUE_LABELS[value] || "Requested value";
@@ -81,8 +169,7 @@ requestTypeGroup.addEventListener("click", (e) => {
 
 async function loadCustomers() {
   try {
-    const res = await fetch(`${API_BASE}/customers`);
-    const customers = await res.json();
+    const customers = await requestJson("/customers");
     for (const c of customers) {
       const opt = document.createElement("option");
       opt.value = c.customer_id;
@@ -91,7 +178,7 @@ async function loadCustomers() {
     }
   } catch (err) {
     const opt = document.createElement("option");
-    opt.textContent = "Couldn't load customers — is the API running?";
+    opt.textContent = `Couldn't load customers: ${err.message}`;
     opt.disabled = true;
     customerSelect.appendChild(opt);
   }
@@ -120,17 +207,35 @@ const AGENT_LABELS = {
 function renderDecision(decision) {
   const stampEl = document.getElementById("outcome-stamp");
   stampEl.textContent = capitalize(decision.outcome);
-  stampEl.className = "stamp stamp--" + decision.outcome;
+  const outcomes = new Set(["approved", "denied", "escalated", "pending"]);
+  stampEl.className = `stamp${outcomes.has(decision.outcome) ? ` stamp--${decision.outcome}` : ""}`;
 
   document.getElementById("result-customer-name").textContent =
     customerSelect.options[customerSelect.selectedIndex]?.text.split(" — ")[0] || "";
   document.getElementById("result-customer-id").textContent = decision.customer_id;
 
+  const caseIdEl = document.getElementById("result-case-id");
+  if (decision.case_id) {
+    caseIdEl.textContent = `Escalation Case: ${decision.case_id}`;
+    caseIdEl.hidden = false;
+  } else {
+    caseIdEl.hidden = true;
+  }
+
+  const hashSec = document.getElementById("hash-section");
+  const hashEl = document.getElementById("result-record-hash");
+  if (decision.record_hash) {
+    hashEl.textContent = decision.record_hash;
+    hashSec.hidden = false;
+  } else {
+    hashSec.hidden = true;
+  }
+
   document.getElementById("result-reasoning").textContent = decision.reasoning;
 
   const termsSection = document.getElementById("terms-section");
   const termsList = document.getElementById("terms-list");
-  termsList.innerHTML = "";
+  termsList.replaceChildren();
   const termEntries = Object.entries(decision.terms || {});
   termsSection.hidden = termEntries.length === 0;
   for (const [key, value] of termEntries) {
@@ -144,7 +249,7 @@ function renderDecision(decision) {
 
   const citationsSection = document.getElementById("citations-section");
   const citationsList = document.getElementById("citations-list");
-  citationsList.innerHTML = "";
+  citationsList.replaceChildren();
   const citations = decision.policy_citations || [];
   citationsSection.hidden = citations.length === 0;
   for (const c of citations) {
@@ -154,16 +259,20 @@ function renderDecision(decision) {
   }
 
   const traceList = document.getElementById("trace-list");
-  traceList.innerHTML = "";
+  traceList.replaceChildren();
   for (const step of decision.trace || []) {
     const li = document.createElement("li");
     const label = AGENT_LABELS[step.agent] || step.agent;
-    li.innerHTML = `<strong>${label}</strong> — ${step.action}<span class="trace-detail"></span>`;
-    li.querySelector(".trace-detail").textContent = step.detail;
+    li.append(
+      textElement("strong", "", label),
+      document.createTextNode(` — ${step.action ?? ""}`),
+      textElement("span", "trace-detail", step.detail)
+    );
     traceList.appendChild(li);
   }
 
   showState("result");
+  updateEscalationBadge();
 }
 
 async function submitRequest(payload) {
@@ -171,16 +280,14 @@ async function submitRequest(payload) {
   submitBtn.disabled = true;
   submitBtn.textContent = "Routing…";
   try {
-    const res = await fetch(`${API_BASE}/decide`, {
+    const decision = await requestJson("/decide", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": `IDEMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `Request failed (${res.status})`);
-    }
-    const decision = await res.json();
     renderDecision(decision);
   } catch (err) {
     errorMsgEl.textContent = err.message || "Something went wrong reaching the supervisor.";
@@ -228,5 +335,221 @@ document.querySelectorAll(".samples__item").forEach((btn) => {
   });
 });
 
+// --- Underwriter Cockpit (HITL) Logic ---
+async function updateEscalationBadge() {
+  try {
+    const data = await requestJson("/escalations?status=pending");
+    escalationBadge.textContent = data.length || 0;
+  } catch (err) {
+    console.error("Could not refresh the pending escalation count.", err);
+  }
+}
+
+async function loadEscalations() {
+  try {
+    const escalations = await requestJson("/escalations?status=pending");
+    if (!Array.isArray(escalations)) throw new Error("Unexpected escalation response.");
+    escalationBadge.textContent = escalations.length || 0;
+
+    escalationsList.replaceChildren();
+    if (escalations.length === 0) {
+      escalationsEmpty.hidden = false;
+      return;
+    }
+    escalationsEmpty.hidden = true;
+
+    for (const esc of escalations) {
+      const card = document.createElement("div");
+      card.className = "escalation-card";
+      const head = document.createElement("div");
+      head.className = "escalation-card__head";
+      head.append(
+        textElement("h3", "escalation-card__title mono", esc.case_id),
+        textElement("span", "hitl-case-tag", (esc.request_type || "").replace(/_/g, " "))
+      );
+
+      const body = document.createElement("div");
+      body.className = "escalation-card__body";
+      const customer = document.createElement("div");
+      customer.append(textElement("strong", "", "Customer: "), document.createTextNode(esc.customer_id ?? "—"));
+      const requestedValue = document.createElement("div");
+      requestedValue.append(
+        textElement("strong", "", "Requested value: "),
+        document.createTextNode(esc.requested_value ?? "N/A")
+      );
+      const reasons = document.createElement("ul");
+      reasons.className = "escalation-card__reasons";
+      for (const reason of esc.reasons || []) reasons.appendChild(textElement("li", "", reason));
+      body.append(customer, requestedValue, reasons);
+
+      const reviewButton = textElement("button", "review-btn", "Review case");
+      reviewButton.type = "button";
+      reviewButton.addEventListener("click", () => openReviewModal(esc));
+      card.append(head, body, reviewButton);
+      escalationsList.appendChild(card);
+    }
+  } catch (err) {
+    escalationsEmpty.hidden = true;
+    escalationsList.replaceChildren(textElement("p", "muted", `Failed to load escalations: ${err.message}`));
+  }
+}
+
+refreshEscalationsBtn.addEventListener("click", loadEscalations);
+
+function openReviewModal(esc) {
+  currentReviewCase = esc;
+  modalCaseTitle.textContent = `Review ${esc.case_id}`;
+  modalCaseDetails.replaceChildren();
+  for (const [label, value] of [
+    ["Customer", esc.customer_id],
+    ["Request", (esc.request_type || "").replace(/_/g, " ")],
+    ["Flagged reasons", (esc.reasons || []).join("; ") || "None listed"],
+  ]) {
+    const detail = document.createElement("p");
+    detail.append(textElement("strong", "", `${label}: `), document.createTextNode(value ?? "—"));
+    modalCaseDetails.appendChild(detail);
+  }
+  reviewForm.reset();
+  reviewDecisionInput.value = "approve";
+  overrideField.hidden = true;
+  overrideValueInput.required = false;
+  reviewError.hidden = true;
+  for (const button of reviewDecisionGroup.querySelectorAll(".segmented__option")) {
+    const selected = button.dataset.decision === "approve";
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  reviewDialog.showModal();
+}
+
+modalCloseBtn.addEventListener("click", () => reviewDialog.close());
+
+reviewDecisionGroup.addEventListener("click", (e) => {
+  const btn = e.target.closest(".segmented__option");
+  if (!btn) return;
+  for (const b of reviewDecisionGroup.querySelectorAll(".segmented__option")) {
+    b.classList.toggle("is-active", b === btn);
+    b.setAttribute("aria-pressed", String(b === btn));
+  }
+  reviewDecisionInput.value = btn.dataset.decision;
+  overrideField.hidden = btn.dataset.decision !== "override";
+  overrideValueInput.required = btn.dataset.decision === "override";
+  reviewError.hidden = true;
+});
+
+reviewForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!currentReviewCase) return;
+
+  const decision = reviewDecisionInput.value;
+  const notes = document.getElementById("reviewer_notes").value;
+  let overriddenTerms = null;
+
+  if (decision === "override") {
+    const val = parseFloat(overrideValueInput.value);
+    if (!Number.isFinite(val)) {
+      reviewError.textContent = "Enter a valid value for the overridden terms.";
+      reviewError.hidden = false;
+      overrideValueInput.focus();
+      return;
+    }
+    if (currentReviewCase.request_type === "loan_rate_negotiation") overriddenTerms = { new_rate: val };
+    if (currentReviewCase.request_type === "fee_waiver") overriddenTerms = { waived_amount: val };
+    if (currentReviewCase.request_type === "credit_limit_increase") overriddenTerms = { new_limit: val };
+    if (currentReviewCase.request_type === "retention_offer") overriddenTerms = { credit_amount: val };
+  }
+
+  const payload = {
+    decision,
+    reviewer_notes: notes,
+    overridden_terms: overriddenTerms,
+  };
+
+  try {
+    await requestJson(`/escalations/${encodeURIComponent(currentReviewCase.case_id)}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    reviewDialog.close();
+    loadEscalations();
+    updateEscalationBadge();
+  } catch (err) {
+    reviewError.textContent = `Could not complete review: ${err.message}`;
+    reviewError.hidden = false;
+  }
+});
+
+// --- Cryptographic Audit Logic ---
+async function loadAuditLedger() {
+  try {
+    const records = await requestJson("/audit/ledger");
+    if (!Array.isArray(records)) throw new Error("Unexpected audit ledger response.");
+    auditTableBody.replaceChildren();
+    if (records.length === 0) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = textElement("td", "muted", "No transactions recorded yet.");
+      emptyCell.colSpan = 6;
+      emptyRow.appendChild(emptyCell);
+      auditTableBody.appendChild(emptyRow);
+      return;
+    }
+    for (const r of records) {
+      const tr = document.createElement("tr");
+      const timestamp = String(r.executed_on || "—").slice(0, 19).replace("T", " ");
+      const outcome = String(r.outcome || "unknown");
+      const outcomeClasses = new Set(["approved", "denied", "escalated", "pending"]);
+      tr.append(
+        textElement("td", "mono", `#${r.id ?? "—"}`),
+        textElement("td", "muted", timestamp),
+        textElement("td", "mono", r.customer_id),
+        textElement("td", "", r.action_type),
+      );
+      const outcomeCell = document.createElement("td");
+      const outcomeStamp = textElement(
+        "span",
+        `stamp${outcomeClasses.has(outcome) ? ` stamp--${outcome}` : ""}`,
+        outcome
+      );
+      outcomeCell.appendChild(outcomeStamp);
+      tr.append(
+        outcomeCell,
+        textElement("td", "mono audit-hash", r.record_hash ? `${r.record_hash.slice(0, 20)}…` : "—")
+      );
+      auditTableBody.appendChild(tr);
+    }
+  } catch (err) {
+    const errorRow = document.createElement("tr");
+    const errorCell = textElement("td", "muted", `Could not load audit ledger: ${err.message}`);
+    errorCell.colSpan = 6;
+    errorRow.appendChild(errorCell);
+    auditTableBody.replaceChildren(errorRow);
+  }
+}
+
+verifyAuditBtn.addEventListener("click", async () => {
+  verifyAuditBtn.disabled = true;
+  verifyAuditBtn.textContent = "Verifying chain…";
+  try {
+    const data = await requestJson("/audit/verify");
+    auditStatusBanner.hidden = false;
+    auditStatusBanner.className = `status-banner ${data.valid ? "is-valid" : "is-invalid"}`;
+    const status = textElement("strong", "", data.valid ? "Hash chain verified" : "Hash chain check failed");
+    auditStatusText.replaceChildren(
+      status,
+      document.createTextNode(` — ${data.message} (${data.total_records} records checked).`)
+    );
+  } catch (err) {
+    auditStatusBanner.hidden = false;
+    auditStatusBanner.className = "status-banner is-invalid";
+    auditStatusText.textContent = `Verification error: ${err.message}`;
+  } finally {
+    verifyAuditBtn.disabled = false;
+    verifyAuditBtn.textContent = "Verify hash chain";
+  }
+});
+
+// Initialize
 setRequestType("loan_rate_negotiation");
 loadCustomers();
+updateEscalationBadge();
