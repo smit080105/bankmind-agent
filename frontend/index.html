@@ -109,12 +109,12 @@
       <p>Submit a request on the left to see the supervisor's decision, policy citations, double-entry accounting records, and the full audit trace.</p>
     </div>
 
-    <div id="statement-loading" class="statement-loading" hidden>
+    <div id="statement-loading" class="statement-loading" role="status" aria-live="polite" hidden>
       <div class="stamp stamp--pending">Reviewing</div>
       <p class="loading-line">Evaluating policy &amp; executing agent chain&hellip;</p>
     </div>
 
-    <div id="statement-error" class="statement-error" hidden>
+    <div id="statement-error" class="statement-error" role="alert" hidden>
       <h1>Couldn't complete this request</h1>
       <p id="statement-error-message"></p>
     </div>

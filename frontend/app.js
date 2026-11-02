@@ -47,6 +47,7 @@ const refreshEscalationsBtn = document.getElementById("refresh-escalations-btn")
 // Modal
 const reviewDialog = document.getElementById("review-dialog");
 const reviewForm = document.getElementById("review-form");
+const reviewSubmitBtn = document.getElementById("submit-review-btn");
 const modalCloseBtn = document.getElementById("modal-close-btn");
 const modalCaseTitle = document.getElementById("modal-case-title");
 const modalCaseDetails = document.getElementById("modal-case-details");
@@ -157,7 +158,10 @@ function setRequestType(value) {
 
   for (const field of conditionalFields) {
     const applicable = field.dataset.for.split(",").includes(value);
-    field.style.display = applicable ? "" : "none";
+    field.hidden = !applicable;
+    for (const control of field.querySelectorAll("input, select, textarea")) {
+      control.disabled = !applicable;
+    }
   }
 }
 
@@ -346,6 +350,10 @@ async function updateEscalationBadge() {
 }
 
 async function loadEscalations() {
+  if (refreshEscalationsBtn.disabled) return;
+  refreshEscalationsBtn.disabled = true;
+  const refreshLabel = refreshEscalationsBtn.textContent;
+  refreshEscalationsBtn.textContent = "Refreshing…";
   try {
     const escalations = await requestJson("/escalations?status=pending");
     if (!Array.isArray(escalations)) throw new Error("Unexpected escalation response.");
@@ -391,6 +399,9 @@ async function loadEscalations() {
   } catch (err) {
     escalationsEmpty.hidden = true;
     escalationsList.replaceChildren(textElement("p", "muted", `Failed to load escalations: ${err.message}`));
+  } finally {
+    refreshEscalationsBtn.disabled = false;
+    refreshEscalationsBtn.textContent = refreshLabel;
   }
 }
 
@@ -439,7 +450,12 @@ reviewDecisionGroup.addEventListener("click", (e) => {
 
 reviewForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!currentReviewCase) return;
+  if (reviewSubmitBtn.disabled) return;
+  if (!currentReviewCase) {
+    reviewError.textContent = "Select an escalation case before submitting a review.";
+    reviewError.hidden = false;
+    return;
+  }
 
   const decision = reviewDecisionInput.value;
   const notes = document.getElementById("reviewer_notes").value;
@@ -465,6 +481,8 @@ reviewForm.addEventListener("submit", async (e) => {
     overridden_terms: overriddenTerms,
   };
 
+  reviewSubmitBtn.disabled = true;
+  reviewSubmitBtn.textContent = "Submitting review…";
   try {
     await requestJson(`/escalations/${encodeURIComponent(currentReviewCase.case_id)}/review`, {
       method: "POST",
@@ -477,6 +495,9 @@ reviewForm.addEventListener("submit", async (e) => {
   } catch (err) {
     reviewError.textContent = `Could not complete review: ${err.message}`;
     reviewError.hidden = false;
+  } finally {
+    reviewSubmitBtn.disabled = false;
+    reviewSubmitBtn.textContent = "Commit Review & Execute";
   }
 });
 
