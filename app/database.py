@@ -215,9 +215,14 @@ def record_action(customer_id: str, action_type: str, details_json: str,
         }
 
 
-def get_action_ledger(limit: int = 50) -> list[dict]:
+def get_action_ledger(limit: int | None = 50) -> list[dict]:
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM action_ledger ORDER BY id ASC LIMIT ?", (limit,)).fetchall()
+        if limit is None:
+            rows = conn.execute("SELECT * FROM action_ledger ORDER BY id ASC").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM action_ledger ORDER BY id ASC LIMIT ?", (limit,)
+            ).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -313,9 +318,11 @@ def resolve_escalation(case_id: str, reviewer_decision: str, reviewer_notes: str
         conn.execute(
             """UPDATE escalation_queue
                SET status = ?, reviewer_decision = ?, reviewer_notes = ?, overridden_terms = ?, reviewed_at = ?
-               WHERE case_id = ?""",
+               WHERE case_id = ? AND status = 'pending'""",
             (status, reviewer_decision, reviewer_notes, terms_json, now, case_id)
         )
+        if conn.execute("SELECT changes()").fetchone()[0] == 0:
+            return None
     return get_escalation_by_id(case_id)
 
 

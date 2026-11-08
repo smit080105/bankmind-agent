@@ -48,7 +48,7 @@ class TestHealthAndCustomers:
 
 
 class TestDecideEndpoint:
-    def test_missing_llm_key_returns_actionable_500(self, monkeypatch, tmp_path):
+    def test_missing_llm_key_returns_safe_service_error(self, monkeypatch, tmp_path):
         """With no API key configured, /api/decide must fail with a clear,
         actionable message — not a blank 500. This is the exact bug class
         that was silently swallowed before main.py was fixed to catch more
@@ -72,8 +72,10 @@ class TestDecideEndpoint:
             "request_type": "loan_rate_negotiation",
             "customer_message": "test",
         })
-        assert response.status_code == 500
-        assert "GROQ_API_KEY" in response.json()["detail"]
+        assert response.status_code == 503
+        assert response.json()["detail"] == (
+            "The decision service is temporarily unavailable. Check server configuration and logs."
+        )
 
     def test_successful_decision_round_trips(self, monkeypatch, tmp_path):
         """Mock the Supervisor entirely to verify main.py correctly
@@ -113,9 +115,7 @@ class TestDecideEndpoint:
         assert response.status_code == 422
 
     def test_unexpected_exception_still_returns_json_detail(self, monkeypatch, tmp_path):
-        """A non-RuntimeError exception (e.g. a provider SDK error) must
-        still come back as JSON with a `detail` field the dashboard can
-        display — not an opaque, undetailed 500."""
+        """Unexpected internal errors are logged but not exposed to callers."""
         client = _client(monkeypatch, tmp_path)
 
         def _boom(req, max_turns=8):
@@ -129,8 +129,34 @@ class TestDecideEndpoint:
             "customer_message": "test",
         })
         assert response.status_code == 500
-        assert "detail" in response.json()
-        assert "KeyError" in response.json()["detail"]
+        assert response.json()["detail"] == (
+            "The decision could not be completed. Check server logs for details."
+        )
+
+    def test_api_key_protects_customer_data(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch, tmp_path)
+        monkeypatch.setattr("app.main.BANKMIND_API_KEY", "test-api-key")
+
+        assert client.get("/api/customers").status_code == 401
+        assert client.get("/api/customers", headers={
+            "Authorization": "Bearer test-api-key",
+        }).status_code == 200
+        assert client.get("/api/health").status_code == 200
+
+    def test_security_headers_are_set(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch, tmp_path)
+        response = client.get("/api/health")
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["X-Frame-Options"] == "DENY"
+
+    def test_oversized_customer_message_is_rejected(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch, tmp_path)
+        response = client.post("/api/decide", json={
+            "customer_id": "CUST1001",
+            "request_type": "loan_rate_negotiation",
+            "customer_message": "x" * 4001,
+        })
+        assert response.status_code == 422
 
 
 class TestDashboardMount:

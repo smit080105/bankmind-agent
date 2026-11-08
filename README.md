@@ -16,17 +16,27 @@ A portfolio project demonstrating an agentic banking workflow that combines **de
 
 Resume bullets you can adapt:
 
-- Built a multi-provider LLM agent workflow with specialist tools for customer context, policy evaluation, negotiation, execution, and escalation.
+- Built a multi-provider LLM agent workflow with specialist tools and request-scoped authorization; tool executions recheck deterministic policy against current database state.
 - Implemented YAML-driven policy checks and retrieval over policy documents, with human review for requests outside automated authority.
 - Added idempotent API request handling, a SHA-256 hash-chained action ledger, and balanced double-entry journals for supported demo transactions.
 - Developed a responsive dashboard for customer intake, underwriter review, and audit-chain inspection, backed by FastAPI endpoints.
 - Added an offline pytest suite covering policy boundaries, API behavior, escalation workflows, sanitization, audit verification, and accounting invariants.
+- Added configurable API-key protection, restrictive CORS defaults, bounded inputs, safer API error handling, and atomic one-time escalation review.
 
 These are project features, not measured production outcomes. Adjust the wording to match your contribution and verify details before using them on a resume.
 
 ## Scope and limitations
 
 This is a local portfolio demonstration using synthetic sample data. It is not a banking service and must not be used for real customer data, financial decisions, or transactions. PII masking uses patterns and is not comprehensive or a substitute for a reviewed data-protection program. The hash chain is tamper-evident for verified records, but is not an immutable or independently anchored audit system. The application does not implement production authentication or authorization and makes no regulatory-compliance claim.
+
+## Security configuration
+
+- Set `BANKMIND_API_KEY` to a unique, high-entropy secret of at least 32 characters before exposing the service. When configured, all `/api/*` routes except `/api/health` require `Authorization: Bearer <key>`. The dashboard accepts the key in its header and keeps it in tab-scoped `sessionStorage`.
+- If the key is unset, authentication is disabled for local development and the server logs a warning. Docker Compose refuses to start without the key. Do not expose an unauthenticated development instance to a network.
+- `CORS_ALLOWED_ORIGINS` is a comma-separated allowlist; it defaults to the two local dashboard origins rather than `*`.
+- Request sizes/values and human override fields are validated, unexpected decision failures are logged server-side rather than returned to clients, and an escalation can transition out of `pending` only once.
+- Each LLM tool call is bound to the original request/customer. The execution dispatcher recomputes policy against database state immediately before writing an action; model-provided policy results are not treated as execution authorization.
+- The dashboard/API-key flow is intended for a local portfolio demo. Use HTTPS and a real identity provider, role-based authorization, secret management, persistent rate limiting, and independently protected audit storage before any shared or production deployment. PII masking and the SHA-256 chain do not provide compliance or production data security.
 
 ---
 
@@ -125,7 +135,8 @@ pip install -r requirements-dev.txt
 
 # 3. Configure environment (PowerShell: Copy-Item .env.example .env)
 cp .env.example .env
-# Set LLM_PROVIDER (groq recommended for free tier) and API key
+# Set LLM_PROVIDER (groq recommended for free tier), provider API key, and
+# BANKMIND_API_KEY (generate with: python -c "import secrets; print(secrets.token_urlsafe(32))")
 
 # 4. Initialize database
 python scripts/init_db.py

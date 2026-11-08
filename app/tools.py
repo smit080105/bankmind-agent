@@ -17,6 +17,7 @@ once here, add one line to `dispatch()`.
 """
 import copy
 import json
+import math
 
 from app.agents import (
     customer_profile_agent,
@@ -25,6 +26,7 @@ from app.agents import (
     execution_agent,
     escalation_agent,
 )
+from app.models import DecisionRequest, RequestType
 
 TOOLS = [
     {
@@ -281,19 +283,60 @@ def _decode_passthrough_fields(tool_name: str, tool_input: dict) -> dict:
     return decoded
 
 
-def dispatch(tool_name: str, tool_input: dict) -> dict:
+def dispatch(
+    tool_name: str,
+    tool_input: dict,
+    request: DecisionRequest | None = None,
+) -> dict:
     """Public entry point. Never lets an agent-layer exception escape and
     crash the Supervisor's tool-calling loop — a malformed or unexpected
     tool call from the LLM should surface as an error result the model can
-    see and react to, not a 500 that ends the whole request."""
+    see and react to, not a 500 that ends the whole request.
+
+    The trusted request is supplied by the Supervisor, never by the LLM. It
+    binds customer access and execution authorization to the original API call.
+    """
     try:
-        return _dispatch_impl(tool_name, tool_input)
+        return _dispatch_impl(tool_name, tool_input, request)
     except Exception as e:  # noqa: BLE001 - deliberately broad, see docstring
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
+def _dispatch_impl(
+    tool_name: str,
+    tool_input: dict,
+    request: DecisionRequest | None = None,
+) -> dict:
     tool_input = _decode_passthrough_fields(tool_name, tool_input)
+    if (
+        request is not None
+        and "customer_id" in tool_input
+        and tool_input["customer_id"] != request.customer_id
+    ):
+        return {"error": "Tool call blocked: customer does not match the request."}
+    request_scoped_tools = {
+        "check_loan_negotiation_policy": RequestType.LOAN_RATE_NEGOTIATION,
+        "negotiate_loan_rate": RequestType.LOAN_RATE_NEGOTIATION,
+        "check_fee_waiver_policy": RequestType.FEE_WAIVER,
+        "negotiate_fee_waiver": RequestType.FEE_WAIVER,
+        "check_credit_limit_policy": RequestType.CREDIT_LIMIT_INCREASE,
+        "negotiate_credit_limit": RequestType.CREDIT_LIMIT_INCREASE,
+        "check_retention_offer_policy": RequestType.RETENTION_OFFER,
+        "negotiate_retention_offer": RequestType.RETENTION_OFFER,
+    }
+    if (
+        request is not None
+        and tool_name in request_scoped_tools
+        and request_scoped_tools[tool_name] != request.request_type
+    ):
+        return {"error": "Tool call blocked: tool does not match the request type."}
+    if (
+        request is not None
+        and tool_name == "escalate_case"
+        and tool_input.get("request_type") != request.request_type.value
+    ):
+        return {"error": "Tool call blocked: escalation type does not match the request."}
+
     if tool_name == "get_customer_profile":
         return customer_profile_agent.get_customer_profile(tool_input["customer_id"])
 
@@ -350,26 +393,12 @@ def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
         return negotiation_agent.negotiate_retention_offer(tool_input["evaluation"])
 
     if tool_name == "execute_action":
+        if request is None:
+            return {"error": "Execution blocked: trusted request context is missing."}
         action_type = tool_input["action_type"]
         params = tool_input["params"]
         customer_id = tool_input["customer_id"]
-        if action_type == "loan_rate_change":
-            return execution_agent.execute_loan_rate_change(
-                customer_id, params.get("loan_id"), params["new_rate"]
-            )
-        if action_type == "fee_waiver":
-            return execution_agent.execute_fee_waiver(
-                customer_id, params["fee_type"], params["amount"]
-            )
-        if action_type == "credit_limit_change":
-            return execution_agent.execute_credit_limit_change(
-                customer_id, params.get("account_id"), params["new_limit"], params["is_temporary"]
-            )
-        if action_type == "retention_credit":
-            return execution_agent.execute_retention_credit(
-                customer_id, params["credit_amount"]
-            )
-        return {"error": f"unknown action_type {action_type}"}
+        return _execute_policy_checked(action_type, customer_id, params, request)
 
     if tool_name == "escalate_case":
         return escalation_agent.escalate(
@@ -378,3 +407,138 @@ def _dispatch_impl(tool_name: str, tool_input: dict) -> dict:
         )
 
     return {"error": f"unknown tool {tool_name}"}
+
+
+def _execute_policy_checked(
+    action_type: str,
+    customer_id: str,
+    params: dict,
+    request: DecisionRequest,
+) -> dict:
+    """Re-evaluates policy using trusted request fields immediately before execution."""
+    from app import database as db
+    from app import policy_engine
+
+    action_requests = {
+        "loan_rate_change": RequestType.LOAN_RATE_NEGOTIATION,
+        "fee_waiver": RequestType.FEE_WAIVER,
+        "credit_limit_change": RequestType.CREDIT_LIMIT_INCREASE,
+        "retention_credit": RequestType.RETENTION_OFFER,
+    }
+    if action_type not in action_requests:
+        return {"error": f"Execution blocked: unsupported action '{action_type}'."}
+    if action_requests[action_type] != request.request_type:
+        return {"error": "Execution blocked: action type does not match the request."}
+    if customer_id != request.customer_id:
+        return {"error": "Execution blocked: customer does not match the request."}
+
+    customer = db.get_customer(request.customer_id)
+    if not customer:
+        return {"error": "Execution blocked: customer was not found."}
+
+    def valid_number(value) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
+
+    def blocked(reasons: list[str]) -> dict:
+        return {"error": "Execution blocked by policy: " + "; ".join(reasons)}
+
+    if action_type == "loan_rate_change":
+        if set(params) - {"loan_id", "new_rate"} or not valid_number(params.get("new_rate")):
+            return {"error": "Execution blocked: invalid loan rate parameters."}
+        if params.get("loan_id") != request.loan_id:
+            return {"error": "Execution blocked: loan ID does not match the request."}
+        loan = None
+        if request.loan_id:
+            loan = next(
+                (item for item in db.get_loans(request.customer_id)
+                 if item["loan_id"] == request.loan_id),
+                None,
+            )
+            if not loan:
+                return {"error": "Execution blocked: loan does not belong to this customer."}
+        evaluation = policy_engine.evaluate_loan_negotiation(
+            customer, loan, request.requested_value
+        )
+        new_rate = params["new_rate"]
+        upper_bound = request.requested_value
+        if upper_bound is None:
+            upper_bound = evaluation["floor_rate"]
+        if not evaluation["within_agent_authority"]:
+            return blocked(evaluation["escalation_reasons"])
+        if not evaluation["floor_rate"] <= new_rate <= min(upper_bound, evaluation["base_rate"]):
+            return {"error": "Execution blocked: loan rate is outside the authorized offer range."}
+        return execution_agent.execute_loan_rate_change(
+            customer_id, request.loan_id, new_rate
+        )
+
+    if action_type == "fee_waiver":
+        if set(params) != {"fee_type", "amount"} or not valid_number(params.get("amount")):
+            return {"error": "Execution blocked: invalid fee waiver parameters."}
+        if (
+            not request.fee_type
+            or params["fee_type"] != request.fee_type
+            or request.requested_value is None
+            or params["amount"] > request.requested_value
+        ):
+            return {"error": "Execution blocked: fee terms do not match the request."}
+        evaluation = policy_engine.evaluate_fee_waiver(
+            customer, request.fee_type, request.requested_value
+        )
+        if not evaluation["within_agent_authority"]:
+            return blocked(evaluation["escalation_reasons"])
+        return execution_agent.execute_fee_waiver(
+            customer_id, request.fee_type, params["amount"]
+        )
+
+    if action_type == "credit_limit_change":
+        if set(params) != {"account_id", "new_limit", "is_temporary"}:
+            return {"error": "Execution blocked: invalid credit limit parameters."}
+        if (
+            not valid_number(params["new_limit"])
+            or not isinstance(params["is_temporary"], bool)
+            or request.account_id is None
+            or params["account_id"] != request.account_id
+            or params["is_temporary"] != request.is_temporary
+            or request.requested_value is None
+        ):
+            return {"error": "Execution blocked: credit limit terms do not match the request."}
+        account = next(
+            (item for item in db.get_accounts(request.customer_id)
+             if item["account_id"] == request.account_id),
+            None,
+        )
+        if not account or not valid_number(account.get("credit_limit")) or account["credit_limit"] <= 0:
+            return {"error": "Execution blocked: account or current limit is invalid."}
+        increase_pct = (
+            (params["new_limit"] / account["credit_limit"]) - 1
+        ) * 100
+        if not 0 <= increase_pct <= request.requested_value:
+            return {"error": "Execution blocked: credit limit exceeds the requested increase."}
+        evaluation = policy_engine.evaluate_credit_limit_increase(
+            customer, account, request.requested_value, request.is_temporary
+        )
+        if not evaluation["within_agent_authority"]:
+            return blocked(evaluation["escalation_reasons"])
+        return execution_agent.execute_credit_limit_change(
+            customer_id, request.account_id, params["new_limit"], request.is_temporary
+        )
+
+    if set(params) != {"credit_amount"} or not valid_number(params.get("credit_amount")):
+        return {"error": "Execution blocked: invalid retention credit parameters."}
+    if (
+        request.requested_value is None
+        or params["credit_amount"] > request.requested_value
+    ):
+        return {"error": "Execution blocked: retention terms do not match the request."}
+    evaluation = policy_engine.evaluate_retention_offer(
+        customer, request.requested_value, request.closing_all_accounts
+    )
+    if not evaluation["within_agent_authority"]:
+        return blocked(evaluation["escalation_reasons"])
+    return execution_agent.execute_retention_credit(
+        customer_id, params["credit_amount"]
+    )

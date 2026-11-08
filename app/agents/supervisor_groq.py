@@ -79,7 +79,7 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                 tool_input = {}
                 result = {"error": f"Malformed tool arguments JSON: {e}"}
             else:
-                result = dispatch(tool_call.function.name, tool_input)
+                result = dispatch(tool_call.function.name, tool_input, request=req)
 
             trace.append(TraceStep(
                 agent=agent_for_tool(tool_call.function.name),
@@ -93,9 +93,9 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                     case_id = result.get("case_id")
                     record_hash = result.get("record_hash")
             elif tool_call.function.name == "execute_action":
-                outcome = "approved"
-                terms = result
-                if isinstance(result, dict):
+                if isinstance(result, dict) and result.get("status") == "executed":
+                    outcome = "approved"
+                    terms = result
                     record_hash = result.get("record_hash")
 
             if isinstance(result, dict) and result.get("citations"):

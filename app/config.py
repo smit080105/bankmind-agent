@@ -20,6 +20,16 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 # affected — set this to true and use an Express Mode key if you hit that.
 GEMINI_USE_VERTEX_EXPRESS = os.getenv("GEMINI_USE_VERTEX_EXPRESS", "false").strip().lower() == "true"
 
+BANKMIND_API_KEY = os.getenv("BANKMIND_API_KEY", "").strip()
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if origin.strip()
+]
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 

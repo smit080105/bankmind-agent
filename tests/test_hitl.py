@@ -1,12 +1,48 @@
 """Tests for Human-in-the-Loop (HITL) escalation queue and Underwriter Review."""
 from fastapi.testclient import TestClient
 
-from app.database import init_schema, get_escalations, get_action_ledger
+from app.database import init_schema, get_escalations, get_action_ledger, resolve_escalation
 from app.agents import escalation_agent
 from app.main import app
 
 
 class TestHITLEscalationWorkflow:
+    def test_escalation_can_only_be_resolved_once(self, monkeypatch, tmp_path):
+        db_path = tmp_path / "hitl_once_test.db"
+        monkeypatch.setattr("app.database.DATABASE_PATH", db_path)
+        init_schema()
+        esc = escalation_agent.escalate(
+            customer_id="CUST1005",
+            request_type="fee_waiver",
+            reasons=["Needs human review."],
+            context={"fee_type": "maintenance", "amount": 120.0},
+        )
+
+        first = resolve_escalation(esc["case_id"], "reject", "Not approved.")
+        second = resolve_escalation(esc["case_id"], "approve", "Retry.")
+        assert first["status"] == "rejected"
+        assert second is None
+
+    def test_override_requires_supported_bounded_terms(self, monkeypatch, tmp_path):
+        db_path = tmp_path / "hitl_validation_test.db"
+        monkeypatch.setattr("app.database.DATABASE_PATH", db_path)
+        init_schema()
+        client = TestClient(app)
+        esc = escalation_agent.escalate(
+            customer_id="CUST1005",
+            request_type="fee_waiver",
+            reasons=["Requested fee waiver exceeds standard authority."],
+            context={"fee_type": "maintenance", "amount": 120.0},
+        )
+
+        response = client.post(f"/api/escalations/{esc['case_id']}/review", json={
+            "decision": "override",
+            "reviewer_notes": "Approved as an exception.",
+            "overridden_terms": {"waived_amount": -1},
+        })
+        assert response.status_code == 422
+        assert get_escalations(status="pending")[0]["case_id"] == esc["case_id"]
+
     def test_escalation_creates_pending_case(self, monkeypatch, tmp_path):
         db_path = tmp_path / "hitl_test.db"
         monkeypatch.setattr("app.database.DATABASE_PATH", db_path)

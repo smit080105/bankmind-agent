@@ -103,7 +103,7 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
         response_parts = []
         for fc in function_calls:
             tool_input = dict(fc.args) if fc.args else {}
-            result = dispatch(fc.name, tool_input)
+            result = dispatch(fc.name, tool_input, request=req)
 
             trace.append(TraceStep(
                 agent=agent_for_tool(fc.name),
@@ -117,9 +117,9 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                     case_id = result.get("case_id")
                     record_hash = result.get("record_hash")
             elif fc.name == "execute_action":
-                outcome = "approved"
-                terms = result
-                if isinstance(result, dict):
+                if isinstance(result, dict) and result.get("status") == "executed":
+                    outcome = "approved"
+                    terms = result
                     record_hash = result.get("record_hash")
 
             if isinstance(result, dict) and result.get("citations"):

@@ -1,7 +1,7 @@
 """Shared data models used across agents, the policy engine, and the API."""
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RequestType(str, Enum):
@@ -12,18 +12,27 @@ class RequestType(str, Enum):
 
 
 class DecisionRequest(BaseModel):
-    customer_id: str
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: str = Field(..., min_length=1, max_length=64)
     request_type: RequestType
     customer_message: str = Field(
-        ..., description="What the customer actually asked for, in their words."
+        ..., min_length=1, max_length=4000,
+        description="What the customer actually asked for, in their words."
     )
     requested_value: Optional[float] = Field(
         default=None,
+        ge=0,
+        le=100_000_000,
         description="e.g. desired rate (8.5), fee amount to waive, requested credit limit increase, or retention credit amount."
     )
-    loan_id: Optional[str] = None
-    account_id: Optional[str] = None
-    fee_type: Optional[str] = None
+    loan_id: Optional[str] = Field(default=None, max_length=64)
+    account_id: Optional[str] = Field(default=None, max_length=64)
+    fee_type: Optional[str] = Field(default=None, max_length=100)
+    is_temporary: bool = Field(
+        default=False,
+        description="Whether a requested credit limit increase is temporary.",
+    )
     closing_all_accounts: bool = Field(
         default=False,
         description="True if the customer is threatening to close every account (a full exit), not just one product."
@@ -50,9 +59,14 @@ class Decision(BaseModel):
 
 
 class EscalationReviewRequest(BaseModel):
-    decision: str = Field(..., description="'approve', 'reject', or 'override'")
-    reviewer_notes: str = Field(..., description="Justification and notes from underwriter/RM")
-    overridden_terms: Optional[dict[str, Any]] = Field(default=None, description="Terms overridden by underwriter")
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str = Field(..., pattern="^(approve|reject|override)$")
+    reviewer_notes: str = Field(..., min_length=1, max_length=2000)
+    overridden_terms: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Terms overridden by underwriter",
+    )
 
 
 class AuditVerificationResponse(BaseModel):

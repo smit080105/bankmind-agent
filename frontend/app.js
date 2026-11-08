@@ -1,7 +1,10 @@
 const API_BASE = "/api";
 
-async function requestJson(path, options) {
-  const response = await fetch(`${API_BASE}${path}`, options);
+async function requestJson(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const apiKey = sessionStorage.getItem("bankmind-api-key");
+  if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   let body;
   try {
     body = await response.json();
@@ -15,6 +18,31 @@ async function requestJson(path, options) {
   if (body === null) throw new Error("The server returned an invalid response.");
   return body;
 }
+
+const apiKeyForm = document.getElementById("api-key-form");
+const apiKeyInput = document.getElementById("api-key");
+const apiKeyStatus = document.getElementById("api-key-status");
+const clearApiKeyButton = document.getElementById("clear-api-key");
+
+apiKeyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const key = apiKeyInput.value.trim();
+  if (!key) {
+    apiKeyStatus.textContent = "Enter a key or use Clear.";
+    return;
+  }
+  sessionStorage.setItem("bankmind-api-key", key);
+  apiKeyInput.value = "";
+  apiKeyStatus.textContent = "API key active for this browser tab.";
+  loadCustomers();
+  updateEscalationBadge();
+});
+
+clearApiKeyButton.addEventListener("click", () => {
+  sessionStorage.removeItem("bankmind-api-key");
+  apiKeyInput.value = "";
+  apiKeyStatus.textContent = "API key cleared.";
+});
 
 function textElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -100,6 +128,7 @@ const SAMPLES = {
     customer_message: "Can I get a temporary credit limit increase of 40% on card 4532-1111-2222-3333 for a large purchase?",
     requested_value: 40,
     account_id: "ACC2002",
+    is_temporary: true,
   },
   5: {
     customer_id: "CUST1005",
@@ -319,6 +348,7 @@ form.addEventListener("submit", (e) => {
   const feeType = formData.get("fee_type");
   if (feeType) payload.fee_type = feeType;
   payload.closing_all_accounts = formData.get("closing_all_accounts") === "on";
+  payload.is_temporary = formData.get("is_temporary") === "on";
 
   submitRequest(payload);
 });
@@ -335,6 +365,7 @@ document.querySelectorAll(".samples__item").forEach((btn) => {
     document.getElementById("loan_id").value = sample.loan_id ?? "";
     document.getElementById("account_id").value = sample.account_id ?? "";
     document.getElementById("fee_type").value = sample.fee_type ?? "";
+    document.getElementById("is_temporary").checked = !!sample.is_temporary;
     document.getElementById("closing_all_accounts").checked = !!sample.closing_all_accounts;
   });
 });

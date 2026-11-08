@@ -5,16 +5,19 @@ API routes live under /api/* so the dashboard can be mounted at the root
 path without any route-collision ambiguity.
 """
 import hashlib
+import hmac
 import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Header, Response
+from fastapi import FastAPI, HTTPException, Header, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.config import BANKMIND_API_KEY, CORS_ALLOWED_ORIGINS
 from app.database import (
     init_schema,
     get_conn,
@@ -41,6 +44,12 @@ logger = logging.getLogger("bankmind")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if BANKMIND_API_KEY and len(BANKMIND_API_KEY) < 32:
+        raise RuntimeError("BANKMIND_API_KEY must contain at least 32 characters.")
+    if not BANKMIND_API_KEY:
+        logger.warning(
+            "BANKMIND_API_KEY is unset; API authentication is disabled for local development."
+        )
     init_schema()
     yield
 
@@ -54,10 +63,43 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
+
+
+@app.middleware("http")
+async def protect_api_and_set_security_headers(request, call_next):
+    if (
+        BANKMIND_API_KEY
+        and request.url.path.startswith("/api/")
+        and request.url.path != "/api/health"
+        and request.method != "OPTIONS"
+    ):
+        supplied_key = request.headers.get("authorization", "")
+        expected_key = f"Bearer {BANKMIND_API_KEY}"
+        if not hmac.compare_digest(
+            supplied_key.encode("utf-8"), expected_key.encode("utf-8")
+        ):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "A valid API key is required."},
+                headers={
+                    "WWW-Authenticate": "Bearer",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "strict-origin-when-cross-origin",
+                    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+                },
+            )
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 
 @app.get("/api/health")
@@ -99,10 +141,17 @@ def decide(req: DecisionRequest, response: Response, idempotency_key: Optional[s
             save_idempotency_record(idempotency_key, request_hash, decision.model_dump_json())
         return decision
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Decision processing failed")
+        raise HTTPException(
+            status_code=503,
+            detail="The decision service is temporarily unavailable. Check server configuration and logs.",
+        ) from e
     except Exception as e:
-        logger.exception("Unhandled error in /api/decide for customer_id=%s", req.customer_id)
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+        logger.exception("Unhandled error in /api/decide")
+        raise HTTPException(
+            status_code=500,
+            detail="The decision could not be completed. Check server logs for details.",
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +188,35 @@ def review_escalation(case_id: str, review: EscalationReviewRequest):
             detail=f"Case '{case_id}' has already been reviewed with status '{case['status']}'."
         )
 
+    terms = review.overridden_terms or {}
+    allowed_terms = {
+        "loan_rate_negotiation": ("new_rate", 0, 100),
+        "fee_waiver": ("waived_amount", 0, 100_000_000),
+        "credit_limit_increase": ("new_limit", 0, 100_000_000),
+        "retention_offer": ("credit_amount", 0, 100_000_000),
+    }
+    if review.decision == "override":
+        term_spec = allowed_terms.get(case["request_type"])
+        if not term_spec:
+            raise HTTPException(status_code=422, detail="This request type cannot be overridden.")
+        term_name, minimum, maximum = term_spec
+        if set(terms) != {term_name}:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Override must provide exactly one '{term_name}' value.",
+            )
+        value = terms[term_name]
+        if not minimum <= value <= maximum:
+            raise HTTPException(
+                status_code=422,
+                detail=f"'{term_name}' must be between {minimum} and {maximum}.",
+            )
+    elif terms:
+        raise HTTPException(
+            status_code=422,
+            detail="Overridden terms are only accepted for an override decision.",
+        )
+
     # Resolve escalation state in DB
     updated = resolve_escalation(
         case_id=case_id,
@@ -146,14 +224,14 @@ def review_escalation(case_id: str, review: EscalationReviewRequest):
         reviewer_notes=review.reviewer_notes,
         overridden_terms=review.overridden_terms,
     )
+    if not updated:
+        raise HTTPException(status_code=409, detail="This case has already been reviewed.")
 
     # If approved or overridden, execute corresponding action
     execution_result = None
     customer_id = case["customer_id"]
     req_type = case["request_type"]
     context = case["context"]
-    terms = review.overridden_terms or {}
-
     if review.decision in ("approve", "override"):
         if req_type == "loan_rate_negotiation":
             new_rate = terms.get("new_rate", case.get("requested_value") or context.get("requested_rate"))
@@ -194,7 +272,7 @@ def review_escalation(case_id: str, review: EscalationReviewRequest):
 @app.get("/api/audit/verify", response_model=AuditVerificationResponse)
 def verify_audit():
     """Mathematically verifies the SHA-256 hash chain of the entire audit ledger."""
-    records = get_action_ledger(limit=1000)
+    records = get_action_ledger(limit=None)
     is_valid, msg, broken_id = audit.verify_chain(records)
     return AuditVerificationResponse(
         valid=is_valid,
@@ -205,7 +283,7 @@ def verify_audit():
 
 
 @app.get("/api/audit/ledger")
-def view_audit_ledger(limit: int = 50):
+def view_audit_ledger(limit: int = Query(default=50, ge=1, le=500)):
     """Returns raw cryptographically chained action records."""
     return get_action_ledger(limit=limit)
 

@@ -36,6 +36,25 @@ class TestPIISanitizer:
 
 
 class TestCryptographicAuditLedger:
+    def test_unlimited_query_returns_records_beyond_default_page(self, monkeypatch, tmp_path):
+        db_path = tmp_path / "large_audit_test.db"
+        monkeypatch.setattr("app.database.DATABASE_PATH", db_path)
+        init_schema()
+
+        for index in range(51):
+            record_action(
+                "CUST1001",
+                "audit_test",
+                json.dumps({"index": index}),
+                f"2026-09-30T10:{index:02}:00",
+                "executed",
+            )
+
+        assert len(get_action_ledger()) == 50
+        all_records = get_action_ledger(limit=None)
+        assert len(all_records) == 51
+        assert audit.verify_chain(all_records)[0] is True
+
     def test_hash_chain_integrity(self, monkeypatch, tmp_path):
         db_path = tmp_path / "audit_test.db"
         monkeypatch.setattr("app.database.DATABASE_PATH", db_path)

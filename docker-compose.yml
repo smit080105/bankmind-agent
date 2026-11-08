@@ -5,6 +5,8 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      BANKMIND_API_KEY: ${BANKMIND_API_KEY:?Set BANKMIND_API_KEY in .env before starting Docker Compose}
     volumes:
       # Persist the seeded SQLite DB across container restarts.
       - bankmind-data:/app/data
