@@ -1,267 +1,139 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BankMind — Banking Operations AI Demo</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css" />
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Monthly Growth</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="dashboard-shell">
+      <aside class="sidebar" aria-label="Sidebar navigation">
+        <div class="brand-pill" aria-hidden="true"></div>
 
-<a class="skip-link" href="#main-content">Skip to content</a>
-<header class="letterhead">
-  <div class="letterhead__inner">
-    <div class="letterhead__mark">BankMind</div>
-    <div class="letterhead__meta">Banking operations AI &middot; Portfolio demonstration</div>
-    <form id="api-key-form" class="api-key-form">
-      <label class="sr-only" for="api-key">API key</label>
-      <input id="api-key" type="password" autocomplete="off" placeholder="API key (optional locally)" />
-      <button type="submit">Set key</button>
-      <button type="button" id="clear-api-key">Clear</button>
-      <span id="api-key-status" role="status" aria-live="polite"></span>
-    </form>
-  </div>
-  <nav class="nav-tabs" role="tablist" aria-label="Dashboard sections">
-    <button type="button" class="nav-tab is-active" id="tab-intake" role="tab" aria-selected="true" aria-controls="view-intake" tabindex="0" data-view="intake">Customer intake</button>
-    <button type="button" class="nav-tab" id="tab-underwriter" role="tab" aria-selected="false" aria-controls="view-underwriter" tabindex="-1" data-view="underwriter">Underwriter review <span class="badge" id="escalation-badge">0</span></button>
-    <button type="button" class="nav-tab" id="tab-audit" role="tab" aria-selected="false" aria-controls="view-audit" tabindex="-1" data-view="audit">Audit ledger</button>
-  </nav>
-</header>
+        <nav class="sidebar__nav" aria-label="Primary">
+          <button class="nav-item is-active" type="button" aria-label="Dashboard">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="4" rx="1.5" />
+              <rect x="14" y="11" width="7" height="10" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+          </button>
+          <button class="nav-item" type="button" aria-label="Orders">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 5.5h12l-1 13H7l-1-13Zm3 0V4.8A3 3 0 0 1 12 2a3 3 0 0 1 3 2.8V5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button class="nav-item" type="button" aria-label="Analytics">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 18V9.5M10 18V5.5M16 18v-8M22 18V3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button class="nav-item" type="button" aria-label="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3.7v2.1M12 18.2v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.7 12h2.1M18.2 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              <circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+            </svg>
+          </button>
+          <button class="nav-item" type="button" aria-label="Profile">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8" />
+              <path d="M5.5 18.5c1.5-2.7 4-4 6.5-4s5 1.3 6.5 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button class="nav-item" type="button" aria-label="Logout">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 17l5-5-5-5M15 12H4M18 4h1.5A1.5 1.5 0 0 1 21 5.5v13A1.5 1.5 0 0 1 19.5 20H18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </nav>
+      </aside>
 
-<!-- VIEW 1: INTAKE & STATEMENT -->
-<main class="ledger tab-view" id="view-intake" role="tabpanel" aria-labelledby="tab-intake" tabindex="0">
+      <main class="dashboard" aria-label="Monthly growth dashboard">
+        <section class="glass-panel">
+          <header class="headline">
+            <h1>Monthly Growth</h1>
+            <div class="growth-copy">
+              <span class="growth-copy__value">24%</span>
+              <span class="growth-copy__label">Increase</span>
+            </div>
+          </header>
 
-  <section class="page page--intake" aria-label="New request">
-    <div class="page-title-row">
-      <h1>New request</h1>
-      <span class="security-chip">Pattern-based PII masking demo</span>
-    </div>
-    <p class="page__sub">Enter what the customer is asking for. The supervisor orchestrates specialist agents and strictly verifies terms against deterministic policy bounds.</p>
+          <div class="metrics-grid">
+            <article class="metric-card metric-card--large" aria-label="Revenue card">
+              <div class="metric-card__top">
+                <h2>Revenue</h2>
+                <div class="metric-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 14l6-6 4 4 7-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M17 3h3v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+              </div>
 
-    <form id="request-form">
-      <div class="field">
-        <label for="customer">Customer</label>
-        <select id="customer" name="customer_id" required>
-          <option value="" disabled selected>Choose a customer&hellip;</option>
-        </select>
-      </div>
+              <div class="metric-card__value">$45,200</div>
 
-      <div class="field">
-        <label for="request_type">Request type</label>
-        <div class="segmented" id="request-type-group" role="group" aria-label="Request type">
-          <button type="button" class="segmented__option is-active" aria-pressed="true" data-value="loan_rate_negotiation">Loan rate</button>
-          <button type="button" class="segmented__option" aria-pressed="false" data-value="fee_waiver">Fee waiver</button>
-          <button type="button" class="segmented__option" aria-pressed="false" data-value="credit_limit_increase">Credit limit</button>
-          <button type="button" class="segmented__option" aria-pressed="false" data-value="retention_offer">Retention</button>
-        </div>
-        <input type="hidden" id="request_type" name="request_type" value="loan_rate_negotiation" />
-      </div>
+              <svg class="sparkline sparkline--revenue" viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="revenueFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(255,255,255,0.85)" stop-opacity="0.4"/>
+                    <stop offset="100%" stop-color="rgba(255,255,255,0.15)" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0,90 C20,90 35,65 55,70 S85,45 105,48 S145,58 168,42 S208,22 235,38 S270,32 300,20 L300,110 L0,110 Z" fill="url(#revenueFill)" opacity="0.7"/>
+                <path d="M0,90 C20,90 35,65 55,70 S85,45 105,48 S145,58 168,42 S208,22 235,38 S270,32 300,20" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </article>
 
-      <div class="field">
-        <label for="customer_message">What the customer said</label>
-        <textarea id="customer_message" name="customer_message" rows="3" required
-          placeholder="e.g. I found a personal loan at 9.8% at another bank, can you match it?"></textarea>
-      </div>
+            <article class="metric-card metric-card--medium" aria-label="New users card">
+              <div class="metric-card__top">
+                <h2>New Users</h2>
+                <div class="metric-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M5 18V7m7 11V4m7 14v-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                </div>
+              </div>
 
-      <div class="field-row">
-        <div class="field" data-for="loan_rate_negotiation,fee_waiver,credit_limit_increase,retention_offer">
-          <label for="requested_value" id="requested_value_label">Requested rate (%)</label>
-          <input type="number" step="0.01" id="requested_value" name="requested_value" />
-        </div>
-        <div class="field" data-for="loan_rate_negotiation">
-          <label for="loan_id">Loan ID</label>
-          <input type="text" id="loan_id" name="loan_id" placeholder="e.g. LOAN3001" />
-        </div>
-      </div>
+              <div class="metric-card__value">1,250</div>
 
-      <div class="field-row">
-        <div class="field" data-for="fee_waiver">
-          <label for="fee_type">Fee type</label>
-          <input type="text" id="fee_type" name="fee_type" placeholder="e.g. overdraft" />
-        </div>
-        <div class="field" data-for="credit_limit_increase">
-          <label for="account_id">Account ID</label>
-          <input type="text" id="account_id" name="account_id" placeholder="e.g. ACC2002" />
-        </div>
-      </div>
+              <div class="bars" aria-hidden="true">
+                <span style="--h: 36%"></span>
+                <span style="--h: 63%"></span>
+                <span style="--h: 55%"></span>
+                <span style="--h: 47%"></span>
+                <span style="--h: 80%"></span>
+                <span style="--h: 72%"></span>
+                <span style="--h: 58%"></span>
+                <span style="--h: 90%"></span>
+                <span style="--h: 40%"></span>
+                <span style="--h: 68%"></span>
+              </div>
+            </article>
 
-      <div class="field field--checkbox" data-for="credit_limit_increase">
-        <label class="checkbox-label">
-          <input type="checkbox" id="is_temporary" name="is_temporary" />
-          Make this credit limit increase temporary
-        </label>
-      </div>
+            <article class="metric-card metric-card--medium" aria-label="Active sessions card">
+              <div class="metric-card__top">
+                <h2>Active Sessions</h2>
+                <div class="metric-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 15.5a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    <path d="M12 12.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" fill="none" stroke="currentColor" stroke-width="1.8" />
+                  </svg>
+                </div>
+              </div>
 
-      <div class="field field--checkbox" data-for="retention_offer">
-        <label class="checkbox-label">
-          <input type="checkbox" id="closing_all_accounts" name="closing_all_accounts" />
-          Customer is closing every account (full exit), not just one product
-        </label>
-      </div>
+              <div class="metric-card__value">3,100</div>
 
-      <button type="submit" class="submit" id="submit-btn">Route to supervisor</button>
-    </form>
-
-    <div class="samples">
-      <span class="samples__label">Try a sample</span>
-      <button type="button" class="samples__item" data-sample="1">Match a competitor loan rate</button>
-      <button type="button" class="samples__item" data-sample="2">Rate cut, delinquent account</button>
-      <button type="button" class="samples__item" data-sample="3">First-time overdraft waiver</button>
-      <button type="button" class="samples__item" data-sample="4">Temporary limit increase</button>
-      <button type="button" class="samples__item" data-sample="5">Threatening to leave for a competitor</button>
-    </div>
-  </section>
-
-  <div class="gutter" aria-hidden="true"></div>
-
-  <section class="page page--statement" aria-label="Decision">
-    <div id="statement-empty" class="statement-empty">
-      <h1>Statement</h1>
-      <p>Submit a request on the left to see the supervisor's decision, policy citations, double-entry accounting records, and the full audit trace.</p>
-    </div>
-
-    <div id="statement-loading" class="statement-loading" role="status" aria-live="polite" hidden>
-      <div class="stamp stamp--pending">Reviewing</div>
-      <p class="loading-line">Evaluating policy &amp; executing agent chain&hellip;</p>
-    </div>
-
-    <div id="statement-error" class="statement-error" role="alert" hidden>
-      <h1>Couldn't complete this request</h1>
-      <p id="statement-error-message"></p>
-    </div>
-
-    <article id="statement-result" class="statement-result" hidden>
-      <div class="statement-head">
-        <div id="outcome-stamp" class="stamp">Approved</div>
-        <div class="statement-head__id">
-          <div id="result-customer-name">&nbsp;</div>
-          <div id="result-customer-id" class="mono muted"></div>
-          <div id="result-case-id" class="mono hitl-case-tag" hidden></div>
-        </div>
-      </div>
-
-      <section class="statement-section" id="hash-section" hidden>
-        <span class="ledger-hash-tag">SHA-256 Block Hash: <span id="result-record-hash" class="mono"></span></span>
-      </section>
-
-      <section class="statement-section">
-        <h2>Reasoning</h2>
-        <p id="result-reasoning" class="prose"></p>
-      </section>
-
-      <section class="statement-section" id="terms-section" hidden>
-        <h2>Terms</h2>
-        <dl id="terms-list" class="terms"></dl>
-      </section>
-
-      <section class="statement-section" id="citations-section" hidden>
-        <h2>Policy cited</h2>
-        <ul id="citations-list" class="citations"></ul>
-      </section>
-
-      <section class="statement-section">
-        <h2>Agent trace</h2>
-        <ol id="trace-list" class="trace"></ol>
-      </section>
-    </article>
-  </section>
-
-</main>
-
-<!-- VIEW 2: UNDERWRITER COCKPIT (HITL) -->
-<main class="cockpit tab-view" id="view-underwriter" role="tabpanel" aria-labelledby="tab-underwriter" tabindex="0" hidden>
-  <div class="cockpit__header">
-    <div>
-      <h1>Underwriter Escalation Cockpit</h1>
-      <p class="page__sub">Human-in-the-Loop review queue for requests flagged outside agent authority.</p>
-    </div>
-    <button type="button" class="action-btn" id="refresh-escalations-btn">↻ Refresh Queue</button>
-  </div>
-
-  <div id="escalations-empty" class="cockpit-empty" hidden>
-    <p>✓ All clear. No pending escalations in queue.</p>
-  </div>
-
-  <div id="escalations-list" class="escalations-grid"></div>
-
-  <!-- Review Modal -->
-  <dialog id="review-dialog" class="modal">
-    <form id="review-form" method="dialog">
-      <div class="modal__header">
-        <h2 id="modal-case-title">Review Case</h2>
-        <button type="button" class="close-btn" id="modal-close-btn">&times;</button>
-      </div>
-      <div class="modal__body">
-        <div id="modal-case-details" class="case-details"></div>
-
-        <div class="field">
-          <label id="review-determination-label">Review determination</label>
-          <div class="segmented" id="review-decision-group" role="group" aria-labelledby="review-determination-label">
-            <button type="button" class="segmented__option is-active" aria-pressed="true" data-decision="approve">Approve</button>
-            <button type="button" class="segmented__option" aria-pressed="false" data-decision="override">Override terms</button>
-            <button type="button" class="segmented__option" aria-pressed="false" data-decision="reject">Reject</button>
+              <div class="donut-wrap" aria-hidden="true">
+                <div class="donut"></div>
+              </div>
+            </article>
           </div>
-          <input type="hidden" id="review_decision" name="review_decision" value="approve" />
-        </div>
-
-        <div class="field" id="override-field" hidden>
-          <label for="override_value" id="override_label">Overridden term value</label>
-          <input type="number" step="0.01" id="override_value" name="override_value" placeholder="e.g. 9.2 or 75.0" />
-        </div>
-
-        <div class="field">
-          <label for="reviewer_notes">Underwriter Notes &amp; Justification</label>
-          <textarea id="reviewer_notes" name="reviewer_notes" rows="3" required placeholder="State regulatory or relationship justification for this decision..."></textarea>
-        </div>
-        <p id="review-error" class="field-error" role="alert" hidden></p>
-      </div>
-      <div class="modal__footer">
-        <button type="submit" class="submit" id="submit-review-btn">Commit Review &amp; Execute</button>
-      </div>
-    </form>
-  </dialog>
-</main>
-
-<!-- VIEW 3: CRYPTOGRAPHIC AUDIT -->
-<main class="cockpit tab-view" id="view-audit" role="tabpanel" aria-labelledby="tab-audit" tabindex="0" hidden>
-  <div class="cockpit__header">
-    <div>
-      <h1>Audit ledger</h1>
-      <p class="page__sub">Inspect recorded actions and verify the SHA-256 hash chain for changes to the returned ledger records.</p>
+        </section>
+      </main>
     </div>
-    <button type="button" class="action-btn" id="verify-audit-btn">Verify hash chain</button>
-  </div>
 
-  <div id="audit-status-banner" class="status-banner" hidden>
-    <div id="audit-status-text"></div>
-  </div>
-
-  <div class="table-container">
-    <table class="audit-table">
-      <thead>
-        <tr>
-          <th>Block #</th>
-          <th>Timestamp</th>
-          <th>Customer</th>
-          <th>Action</th>
-          <th>Outcome</th>
-          <th>SHA-256 Block Hash</th>
-        </tr>
-      </thead>
-      <tbody id="audit-table-body">
-        <tr><td colspan="6" class="muted">Loading audit ledger...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</main>
-
-<footer class="site-footer">
-  <p>Portfolio demo only. Not a banking service, compliance certification, or financial decision system.</p>
-</footer>
-
-<script src="app.js"></script>
-</body>
+    <script src="app.js"></script>
+  </body>
 </html>
