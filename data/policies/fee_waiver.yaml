@@ -1,9 +1,10 @@
 policy_id: fee_waiver_v1
 description: >
   Governs how many/what value of fees (overdraft, late payment, ATM) an
-  agent may waive per customer per rolling 12 months without escalation.
+  agent may waive per customer in any rolling 12-month period without
+  escalation.
 
-max_waivers_per_year_by_tier:
+max_waivers_per_rolling_12_months_by_tier:
   platinum: 6
   gold: 4
   silver: 2

@@ -108,16 +108,17 @@ def evaluate_loan_negotiation(customer: dict, loan: dict | None,
 def evaluate_fee_waiver(customer: dict, fee_type: str, amount: float) -> dict[str, Any]:
     policy = _load_policy("fee_waiver")
     tier = customer["tier"]
-    year = str(datetime.date.today().year)
 
-    annual_limit = policy["max_waivers_per_year_by_tier"][tier]
+    annual_limit = policy["max_waivers_per_rolling_12_months_by_tier"][tier]
     max_amount = policy["max_single_waiver_amount_by_tier"][tier]
 
-    used_this_year = db.get_fee_waiver_count_this_year(customer["customer_id"], fee_type, year)
+    used_in_last_12_months = db.get_fee_waiver_count_last_12_months(
+        customer["customer_id"]
+    )
     is_first_ever = not db.has_ever_waived(customer["customer_id"], fee_type)
 
     escalation_reasons = []
-    within_annual_limit = used_this_year < annual_limit
+    within_annual_limit = used_in_last_12_months < annual_limit
     goodwill_eligible = is_first_ever and amount <= max_amount
 
     if amount > max_amount:
@@ -126,8 +127,9 @@ def evaluate_fee_waiver(customer: dict, fee_type: str, amount: float) -> dict[st
         )
     if not within_annual_limit and not goodwill_eligible:
         escalation_reasons.append(
-            f"Customer has already used {used_this_year}/{annual_limit} waivers this year "
-            f"for {fee_type} and this is not a first-time goodwill case."
+            f"Customer has already used {used_in_last_12_months}/{annual_limit} waivers "
+            "across all fee types in the last 12 months, and this is not a "
+            "first-time goodwill case for this fee type."
         )
     if customer["account_status"] not in ("active", "good_standing"):
         escalation_reasons.append(f"Account status '{customer['account_status']}' requires review.")
@@ -135,7 +137,7 @@ def evaluate_fee_waiver(customer: dict, fee_type: str, amount: float) -> dict[st
     return {
         "tier": tier,
         "annual_limit": annual_limit,
-        "used_this_year": used_this_year,
+        "used_in_last_12_months": used_in_last_12_months,
         "max_single_amount": max_amount,
         "is_first_ever_waiver_of_type": is_first_ever,
         "goodwill_eligible": goodwill_eligible,

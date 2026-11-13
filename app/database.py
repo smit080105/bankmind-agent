@@ -151,12 +151,19 @@ def get_loans(customer_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def get_fee_waiver_count_this_year(customer_id: str, fee_type: str, year: str) -> int:
+def get_fee_waiver_count_last_12_months(customer_id: str) -> int:
+    today = datetime.date.today()
+    try:
+        cutoff = today.replace(year=today.year - 1)
+    except ValueError:
+        cutoff = today.replace(year=today.year - 1, day=28)
+
     with get_conn() as conn:
         row = conn.execute(
             """SELECT COUNT(*) as cnt FROM fee_waiver_history
-               WHERE customer_id = ? AND fee_type = ? AND waived_on LIKE ?""",
-            (customer_id, fee_type, f"{year}%"),
+               WHERE customer_id = ?
+                 AND date(waived_on) >= ? AND date(waived_on) <= ?""",
+            (customer_id, cutoff.isoformat(), today.isoformat()),
         ).fetchone()
         return row["cnt"] if row else 0
 

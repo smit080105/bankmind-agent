@@ -1,23 +1,24 @@
 # Fee Waiver Policy
 
 ## Purpose
-Defines how many fees (overdraft, late payment, ATM, etc.) an agent may waive
-per customer per year, and the maximum single waiver amount, without escalation.
+Defines the number and value of fees (overdraft, late payment, ATM, etc.) an
+agent may waive without escalation. The count is evaluated over the 12 months
+immediately preceding the request across all fee types, not by calendar year.
 
 ## Annual limits by tier
-Higher relationship tiers get more waivers per year and higher per-waiver caps,
-reflecting their overall value to the bank. Standard tier customers get one
-waiver per year up to a modest cap; Platinum customers get several, at a higher
-cap each.
+The YAML policy sets the maximum total count in any rolling 12-month period
+and the maximum amount for a single waiver by tier. The account must remain
+active or in good standing. Tier limits are example portfolio rules, not
+published industry benchmarks or regulatory requirements.
 
 ## Goodwill waivers
-If a fee type has never been charged to waive before for this customer (a true
-first offense), the agent may waive it as a goodwill gesture even if the
-customer has already used their annual allowance — but only once per fee type,
-ever, per account, and capped at the tier's max single waiver amount.
+If a fee type has never previously been waived for this customer, the agent may
+consider a one-time goodwill waiver even if the total rolling count is
+exhausted. The single-waiver amount cap and account-standing check still apply.
 
 ## Escalation triggers
-Escalate to a human if the customer has already exceeded their annual waiver
-count for that fee type and this is not a first-offense goodwill case, if the
+Escalate to a human if the customer has exhausted their total rolling 12-month
+waiver count and this is not a first-time goodwill case for the requested fee
+type, if the
 single waiver amount would exceed the tier cap, or if the account is not in
 active/good standing.

@@ -145,7 +145,7 @@ class TestAdversarialDefenseBenchmark:
         assert any("exceeds the standard underwriting threshold" in r for r in res["escalation_reasons"])
 
     def test_10_annual_fee_waiver_exhaustion_defense(self):
-        """Attacker attempts repeatedly waiving fees after exhausting annual goodwill quota."""
+        """Attacker attempts repeated waivers after exhausting the rolling quota."""
         customer = {
             "customer_id": "CUST_ATTACK_10",
             "tier": "standard",
@@ -153,10 +153,10 @@ class TestAdversarialDefenseBenchmark:
             "account_status": "active",
             "has_active_delinquency": 0,
         }
-        # Standard tier has 1 waiver per year, goodwill only applies on very first
+        # Standard tier has 1 waiver per rolling 12 months; goodwill applies once per fee type.
         # Simulate having used 1 already and ever waived before
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("app.database.get_fee_waiver_count_this_year", lambda cid, ft, yr: 1)
+            mp.setattr("app.database.get_fee_waiver_count_last_12_months", lambda cid: 1)
             mp.setattr("app.database.has_ever_waived", lambda cid, ft: True)
             res = pe.evaluate_fee_waiver(customer, fee_type="late_payment", amount=20.0)
             assert res["within_agent_authority"] is False

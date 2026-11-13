@@ -41,8 +41,13 @@ def negotiate_fee_waiver(evaluation: dict, requested_amount: float) -> dict:
     return {
         "offer_possible": True,
         "waived_amount": waived_amount,
-        "is_goodwill": evaluation["goodwill_eligible"] and evaluation["used_this_year"] >= evaluation["annual_limit"],
-        "remaining_annual_waivers": max(evaluation["annual_limit"] - evaluation["used_this_year"] - 1, 0),
+        "is_goodwill": (
+            evaluation["goodwill_eligible"]
+            and evaluation["used_in_last_12_months"] >= evaluation["annual_limit"]
+        ),
+        "remaining_annual_waivers": max(
+            evaluation["annual_limit"] - evaluation["used_in_last_12_months"] - 1, 0
+        ),
     }
 
 

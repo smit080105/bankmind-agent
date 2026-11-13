@@ -29,6 +29,8 @@ These are project features, not measured production outcomes. Adjust the wording
 
 This is a local portfolio demonstration using synthetic sample data. It is not a banking service and must not be used for real customer data, financial decisions, or transactions. PII masking uses patterns and is not comprehensive or a substitute for a reviewed data-protection program. The hash chain is tamper-evident for verified records, but is not an immutable or independently anchored audit system. The application does not implement production authentication or authorization and makes no regulatory-compliance claim.
 
+The customer-facing agent is an AI relationship-manager assistant, not a human bank manager. It is designed to explain supported workflow outcomes clearly, apply the demo's deterministic rules, and route exceptions for human review. The numeric limits in the policy files are illustrative portfolio settings, not claims about universal banking practice or regulatory standards. A real institution must set and validate its own jurisdiction-specific policies, customer-fairness controls, approval authority, disclosures, and complaint-handling process with qualified compliance and legal teams before deployment.
+
 ## Security configuration
 
 - Set `BANKMIND_API_KEY` to a unique, high-entropy secret of at least 32 characters before exposing the service. When configured, all `/api/*` routes except `/api/health` require `Authorization: Bearer <key>`. The dashboard accepts the key in its header and keeps it in tab-scoped `sessionStorage`.

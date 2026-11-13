@@ -189,9 +189,9 @@ class TestFeeWaiver:
         assert result["within_agent_authority"] is False
         assert any("exceeds" in r for r in result["escalation_reasons"])
 
-    def test_exhausted_annual_allowance_without_goodwill_escalates(self, temp_db):
+    def test_exhausted_rolling_allowance_without_goodwill_escalates(self, temp_db):
         from app import database as db
-        customer = _customer(tier="standard")  # 1 waiver/year allowed
+        customer = _customer(tier="standard")  # 1 waiver per rolling 12 months
         today = datetime.date.today().isoformat()
 
         with db.get_conn() as conn:
@@ -205,7 +205,7 @@ class TestFeeWaiver:
                  customer["relationship_start_date"], customer["has_active_delinquency"]),
             )
 
-        # Simulate the customer already having used this year's one waiver,
+        # Simulate the customer already having used the rolling-period allowance,
         # AND having a prior waiver of this fee type (so it's not a
         # first-ever goodwill case anymore).
         db.record_fee_waiver(customer["customer_id"], "overdraft", 300, "2020-01-01")
@@ -215,3 +215,32 @@ class TestFeeWaiver:
 
         assert result["is_first_ever_waiver_of_type"] is False
         assert result["within_agent_authority"] is False
+
+    def test_waiver_count_uses_rolling_12_month_window(self, temp_db):
+        from app import database as db
+
+        customer = _customer(tier="standard")
+        with db.get_conn() as conn:
+            conn.execute(
+                """INSERT INTO customers
+                   (customer_id, full_name, tier, credit_score, account_status,
+                    relationship_start_date, has_active_delinquency)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (customer["customer_id"], customer["full_name"], customer["tier"],
+                 customer["credit_score"], customer["account_status"],
+                 customer["relationship_start_date"], customer["has_active_delinquency"]),
+            )
+
+        today = datetime.date.today()
+        try:
+            cutoff = today.replace(year=today.year - 1)
+        except ValueError:
+            cutoff = today.replace(year=today.year - 1, day=28)
+        outside_window = cutoff - datetime.timedelta(days=1)
+
+        db.record_fee_waiver("CUSTX", "atm", 100, outside_window.isoformat())
+        db.record_fee_waiver("CUSTX", "atm", 100, cutoff.isoformat())
+
+        result = pe.evaluate_fee_waiver(customer, "overdraft", amount=100)
+
+        assert result["used_in_last_12_months"] == 1
