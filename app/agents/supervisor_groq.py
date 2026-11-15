@@ -93,10 +93,15 @@ def handle_request(req: DecisionRequest, max_turns: int = 8) -> Decision:
                     case_id = result.get("case_id")
                     record_hash = result.get("record_hash")
             elif tool_call.function.name == "execute_action":
-                if isinstance(result, dict) and result.get("status") == "executed":
-                    outcome = "approved"
-                    terms = result
-                    record_hash = result.get("record_hash")
+                if isinstance(result, dict):
+                    if result.get("status") == "executed":
+                        outcome = "approved"
+                        terms = result
+                        record_hash = result.get("record_hash")
+                    elif result.get("status") == "escalated":
+                        outcome = "escalated"
+                        case_id = result.get("case_id")
+                        record_hash = result.get("record_hash")
 
             if isinstance(result, dict) and result.get("citations"):
                 citations.update(result["citations"])

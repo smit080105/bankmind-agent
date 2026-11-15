@@ -54,6 +54,7 @@ Customer Request (Web / API)
 [Supervisor Orchestrator]   <-- Groq (Llama/GPT-OSS), Gemini, or Claude tool-calling
        │
        ├──► CustomerProfileAgent   --> SQLite Core Data Layer
+       ├──► FraudReviewAgent       --> Deterministic control-evasion signal screening
        ├──► PolicyComplianceAgent  --> Deterministic Rules Engine (YAML) + Vector RAG
        ├──► NegotiationAgent       --> Computes optimal terms within hard policy bounds
        │
@@ -76,6 +77,7 @@ Customer Request (Web / API)
 5. **Human-in-the-Loop (HITL) Escalation Queue**: Policy exceptions enter a stateful queue (`ESC-...`), enabling underwriters and relationship managers to inspect customer risk profiles, override terms with regulatory notes, and trigger downstream execution.
 6. **API Request Idempotency**: Header `Idempotency-Key` prevents duplicate transaction processing or double-waivers during network retries. Reusing a key with a different request returns HTTP 409.
 7. **Adversarial Policy Tests**: Deterministic policy tests cover requests such as excessive waivers, delinquency, high utilization, and attempts to bypass underwriting. They do not measure an LLM's general prompt-injection resistance.
+8. **Fraud-review triage**: A deterministic text screen flags explicit policy-evasion, audit-concealment, or authority-impersonation cues for human review. Flags are not fraud findings; the execution path repeats the screen before any action, and only a human reviewer can resolve an escalation.
 
 ---
 

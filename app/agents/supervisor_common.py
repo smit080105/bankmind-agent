@@ -12,6 +12,10 @@ human employee, bank manager, or authorized decision-maker.
 
 Hard rules, no exceptions:
 1. Always call get_customer_profile first to ground yourself in real data.
+Then call review_fraud_risk before policy evaluation. If it returns \
+requires_human_review=true, call escalate_case with the returned indicators, \
+do not negotiate or execute, and explain that human review is needed. This \
+screen is a triage signal, not a fraud finding.
 2. Before proposing ANY term (rate, waiver amount, credit limit), you MUST \
 call the matching check_*_policy tool. Never state a number you didn't get \
 from a policy/negotiate tool result.
@@ -25,6 +29,8 @@ Only execute if the offer reasonably satisfies the customer's request or is \
 the best you're able to do within policy — you may still choose not to \
 execute if you believe a human should review a borderline case, in which \
 case escalate instead.
+If execute_action returns status=escalated with a case_id, do not create a \
+second escalation for the same request.
 5. Always ground your final reasoning in the specific policy_context / \
 citations returned by the check_*_policy tools.
 6. Communicate like a skilled relationship manager: acknowledge the \
@@ -81,6 +87,7 @@ def customer_request_text(req) -> str:
 def agent_for_tool(tool_name: str) -> str:
     mapping = {
         "get_customer_profile": "CustomerProfileAgent",
+        "review_fraud_risk": "FraudReviewAgent",
         "check_loan_negotiation_policy": "PolicyComplianceAgent",
         "check_fee_waiver_policy": "PolicyComplianceAgent",
         "check_credit_limit_policy": "PolicyComplianceAgent",

@@ -25,6 +25,7 @@ from app.agents import (
     negotiation_agent,
     execution_agent,
     escalation_agent,
+    fraud_review_agent,
 )
 from app.models import DecisionRequest, RequestType
 
@@ -41,6 +42,19 @@ TOOLS = [
                 "customer_id": {"type": "string"},
             },
             "required": ["customer_id"],
+        },
+    },
+    {
+        "name": "review_fraud_risk",
+        "description": (
+            "Screen the trusted customer message for explicit control-evasion "
+            "signals. Call before policy evaluation. This is a review flag, not "
+            "a fraud finding; escalate flagged requests to a human."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
     {
@@ -340,6 +354,11 @@ def _dispatch_impl(
     if tool_name == "get_customer_profile":
         return customer_profile_agent.get_customer_profile(tool_input["customer_id"])
 
+    if tool_name == "review_fraud_risk":
+        if request is None:
+            return {"error": "Fraud review blocked: trusted request context is missing."}
+        return fraud_review_agent.review_request(request.customer_message)
+
     if tool_name == "check_loan_negotiation_policy":
         from app import database as db
         customer = db.get_customer(tool_input["customer_id"])
@@ -435,6 +454,22 @@ def _execute_policy_checked(
     customer = db.get_customer(request.customer_id)
     if not customer:
         return {"error": "Execution blocked: customer was not found."}
+
+    fraud_review = fraud_review_agent.review_request(request.customer_message)
+    if fraud_review["requires_human_review"]:
+        reasons = [
+            "Fraud review screening flagged explicit control-evasion signals; "
+            "this is not a fraud finding."
+        ]
+        return escalation_agent.escalate(
+            customer_id=request.customer_id,
+            request_type=request.request_type.value,
+            reasons=reasons,
+            context={
+                "action_type": action_type,
+                "fraud_review": fraud_review,
+            },
+        )
 
     def valid_number(value) -> bool:
         return (
