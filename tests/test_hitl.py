@@ -5,6 +5,14 @@ from app.database import init_schema, get_escalations, get_action_ledger, resolv
 from app.agents import escalation_agent
 from app.main import app
 
+_TEST_API_KEY = "test-only-api-key-with-at-least-32-characters"
+_AUTH_HEADERS = {"Authorization": f"Bearer {_TEST_API_KEY}"}
+
+
+def _client(monkeypatch):
+    monkeypatch.setattr("app.main.BANKMIND_API_KEY", _TEST_API_KEY)
+    return TestClient(app)
+
 
 class TestHITLEscalationWorkflow:
     def test_escalation_can_only_be_resolved_once(self, monkeypatch, tmp_path):
@@ -27,7 +35,7 @@ class TestHITLEscalationWorkflow:
         db_path = tmp_path / "hitl_validation_test.db"
         monkeypatch.setattr("app.database.DATABASE_PATH", db_path)
         init_schema()
-        client = TestClient(app)
+        client = _client(monkeypatch)
         esc = escalation_agent.escalate(
             customer_id="CUST1005",
             request_type="fee_waiver",
@@ -39,7 +47,7 @@ class TestHITLEscalationWorkflow:
             "decision": "override",
             "reviewer_notes": "Approved as an exception.",
             "overridden_terms": {"waived_amount": -1},
-        })
+        }, headers=_AUTH_HEADERS)
         assert response.status_code == 422
         assert get_escalations(status="pending")[0]["case_id"] == esc["case_id"]
 
@@ -77,7 +85,7 @@ class TestHITLEscalationWorkflow:
                    VALUES ('CUST1005', 'Vikram Mehta', 'gold', 740, 'active', '2019-01-01', 0)"""
             )
 
-        client = TestClient(app)
+        client = _client(monkeypatch)
 
         # 1. Trigger an escalation
         esc = escalation_agent.escalate(
@@ -89,7 +97,7 @@ class TestHITLEscalationWorkflow:
         case_id = esc["case_id"]
 
         # 2. Underwriter inspects list of pending escalations
-        resp = client.get("/api/escalations?status=pending")
+        resp = client.get("/api/escalations?status=pending", headers=_AUTH_HEADERS)
         assert resp.status_code == 200
         cases = resp.json()
         assert any(c["case_id"] == case_id for c in cases)
@@ -99,7 +107,7 @@ class TestHITLEscalationWorkflow:
             "decision": "override",
             "reviewer_notes": "High net-worth customer relationship, approved as one-time exception.",
             "overridden_terms": {"waived_amount": 100.0},
-        })
+        }, headers=_AUTH_HEADERS)
         assert review_resp.status_code == 200
         data = review_resp.json()
         assert data["case"]["status"] == "overridden"
@@ -124,7 +132,7 @@ class TestHITLEscalationWorkflow:
                    VALUES ('CUST1001', 'Ananya Rao', 'gold', 742, 'active', '2018-01-01', 0)"""
             )
 
-        client = TestClient(app)
+        client = _client(monkeypatch)
 
         call_count = 0
         from app.models import Decision, RequestType
@@ -150,7 +158,7 @@ class TestHITLEscalationWorkflow:
             "customer_message": "Please waive my late fee.",
             "requested_value": 25.0,
         }
-        headers = {"Idempotency-Key": "test-key-12345"}
+        headers = {**_AUTH_HEADERS, "Idempotency-Key": "test-key-12345"}
 
         # First call
         resp1 = client.post("/api/decide", json=payload, headers=headers)

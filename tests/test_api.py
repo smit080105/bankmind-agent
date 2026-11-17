@@ -8,9 +8,12 @@ covered by test_policy_engine.py, test_rag.py, and test_tools_dispatch.py;
 these tests only check that main.py wires HTTP correctly around it.
 """
 from fastapi.testclient import TestClient
+import pytest
 
 from app.database import init_schema
 from app.models import Decision, RequestType
+
+_TEST_API_KEY = "test-only-api-key-with-at-least-32-characters"
 
 
 def _client(monkeypatch, tmp_path):
@@ -28,6 +31,7 @@ def _client(monkeypatch, tmp_path):
         )
 
     from app.main import app
+    monkeypatch.setattr("app.main.BANKMIND_API_KEY", _TEST_API_KEY)
     return TestClient(app)
 
 
@@ -40,7 +44,9 @@ class TestHealthAndCustomers:
 
     def test_customers_returns_seeded_rows(self, monkeypatch, tmp_path):
         client = _client(monkeypatch, tmp_path)
-        response = client.get("/api/customers")
+        response = client.get("/api/customers", headers={
+            "Authorization": f"Bearer {_TEST_API_KEY}",
+        })
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -71,7 +77,7 @@ class TestDecideEndpoint:
             "customer_id": "CUST1001",
             "request_type": "loan_rate_negotiation",
             "customer_message": "test",
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_API_KEY}"})
         assert response.status_code == 503
         assert response.json()["detail"] == (
             "The decision service is temporarily unavailable. Check server configuration and logs."
@@ -99,7 +105,7 @@ class TestDecideEndpoint:
             "customer_id": "CUST1001",
             "request_type": "loan_rate_negotiation",
             "customer_message": "match my rate please",
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_API_KEY}"})
         assert response.status_code == 200
         body = response.json()
         assert body["outcome"] == "approved"
@@ -111,7 +117,7 @@ class TestDecideEndpoint:
             "customer_id": "CUST1001",
             "request_type": "not_a_real_type",
             "customer_message": "test",
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_API_KEY}"})
         assert response.status_code == 422
 
     def test_unexpected_exception_still_returns_json_detail(self, monkeypatch, tmp_path):
@@ -127,7 +133,7 @@ class TestDecideEndpoint:
             "customer_id": "CUST1001",
             "request_type": "loan_rate_negotiation",
             "customer_message": "test",
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_API_KEY}"})
         assert response.status_code == 500
         assert response.json()["detail"] == (
             "The decision could not be completed. Check server logs for details."
@@ -143,6 +149,22 @@ class TestDecideEndpoint:
         }).status_code == 200
         assert client.get("/api/health").status_code == 200
 
+    def test_missing_api_key_fails_closed(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch, tmp_path)
+        monkeypatch.setattr("app.main.BANKMIND_API_KEY", "")
+
+        response = client.get("/api/customers")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "API authentication is not configured."
+
+    def test_missing_api_key_prevents_startup(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch, tmp_path)
+        monkeypatch.setattr("app.main.BANKMIND_API_KEY", "")
+
+        with pytest.raises(RuntimeError, match="BANKMIND_API_KEY must be configured"):
+            with client:
+                pass
+
     def test_security_headers_are_set(self, monkeypatch, tmp_path):
         client = _client(monkeypatch, tmp_path)
         response = client.get("/api/health")
@@ -155,7 +177,7 @@ class TestDecideEndpoint:
             "customer_id": "CUST1001",
             "request_type": "loan_rate_negotiation",
             "customer_message": "x" * 4001,
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_API_KEY}"})
         assert response.status_code == 422
 
 

@@ -34,7 +34,7 @@ The customer-facing agent is an AI relationship-manager assistant, not a human b
 ## Security configuration
 
 - Set `BANKMIND_API_KEY` to a unique, high-entropy secret of at least 32 characters before exposing the service. When configured, all `/api/*` routes except `/api/health` require `Authorization: Bearer <key>`. The dashboard accepts the key in its header and keeps it in tab-scoped `sessionStorage`.
-- If the key is unset, authentication is disabled for local development and the server logs a warning. Docker Compose refuses to start without the key. Do not expose an unauthenticated development instance to a network.
+- The API refuses to start if the key is missing or shorter than 32 characters. Protected routes also fail closed if authentication is misconfigured. Generate a unique key and keep it out of source control; Docker Compose requires it.
 - `CORS_ALLOWED_ORIGINS` is a comma-separated allowlist; it defaults to the two local dashboard origins rather than `*`.
 - Request sizes/values and human override fields are validated, unexpected decision failures are logged server-side rather than returned to clients, and an escalation can transition out of `pending` only once.
 - Each LLM tool call is bound to the original request/customer. The execution dispatcher recomputes policy against database state immediately before writing an action; model-provided policy results are not treated as execution authorization.

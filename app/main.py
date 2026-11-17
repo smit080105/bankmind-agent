@@ -44,12 +44,12 @@ logger = logging.getLogger("bankmind")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if BANKMIND_API_KEY and len(BANKMIND_API_KEY) < 32:
-        raise RuntimeError("BANKMIND_API_KEY must contain at least 32 characters.")
     if not BANKMIND_API_KEY:
-        logger.warning(
-            "BANKMIND_API_KEY is unset; API authentication is disabled for local development."
+        raise RuntimeError(
+            "BANKMIND_API_KEY must be configured before starting the API."
         )
+    if len(BANKMIND_API_KEY) < 32:
+        raise RuntimeError("BANKMIND_API_KEY must contain at least 32 characters.")
     init_schema()
     yield
 
@@ -71,30 +71,31 @@ app.add_middleware(
 
 @app.middleware("http")
 async def protect_api_and_set_security_headers(request, call_next):
+    response = None
     if (
-        BANKMIND_API_KEY
-        and request.url.path.startswith("/api/")
+        request.url.path.startswith("/api/")
         and request.url.path != "/api/health"
         and request.method != "OPTIONS"
     ):
-        supplied_key = request.headers.get("authorization", "")
-        expected_key = f"Bearer {BANKMIND_API_KEY}"
-        if not hmac.compare_digest(
-            supplied_key.encode("utf-8"), expected_key.encode("utf-8")
-        ):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "A valid API key is required."},
-                headers={
-                    "WWW-Authenticate": "Bearer",
-                    "X-Content-Type-Options": "nosniff",
-                    "X-Frame-Options": "DENY",
-                    "Referrer-Policy": "strict-origin-when-cross-origin",
-                    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-                },
+        if not BANKMIND_API_KEY:
+            response = JSONResponse(
+                status_code=503,
+                content={"detail": "API authentication is not configured."},
             )
+        else:
+            supplied_key = request.headers.get("authorization", "")
+            expected_key = f"Bearer {BANKMIND_API_KEY}"
+            if not hmac.compare_digest(
+                supplied_key.encode("utf-8"), expected_key.encode("utf-8")
+            ):
+                response = JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid API key is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
-    response = await call_next(request)
+    if response is None:
+        response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
