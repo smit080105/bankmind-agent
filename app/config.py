@@ -21,6 +21,12 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_USE_VERTEX_EXPRESS = os.getenv("GEMINI_USE_VERTEX_EXPRESS", "false").strip().lower() == "true"
 
 BANKMIND_API_KEY = os.getenv("BANKMIND_API_KEY", "").strip()
+AUTH_MODE = os.getenv("AUTH_MODE", "entra").strip().lower()
+ENTRA_TENANT_ID = os.getenv("ENTRA_TENANT_ID", "").strip()
+ENTRA_API_AUDIENCE = os.getenv("ENTRA_API_AUDIENCE", "").strip()
+ENTRA_SPA_CLIENT_ID = os.getenv("ENTRA_SPA_CLIENT_ID", "").strip()
+ENTRA_API_SCOPE = os.getenv("ENTRA_API_SCOPE", "").strip()
+ENTRA_REDIRECT_URI = os.getenv("ENTRA_REDIRECT_URI", "").strip()
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(

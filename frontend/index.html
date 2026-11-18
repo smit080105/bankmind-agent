@@ -16,13 +16,18 @@
   <div class="letterhead__inner">
     <div class="letterhead__mark">BankMind</div>
     <div class="letterhead__meta">Banking operations AI &middot; Portfolio demonstration</div>
-    <form id="api-key-form" class="api-key-form">
+    <form id="api-key-form" class="api-key-form" hidden>
       <label class="sr-only" for="api-key">API key</label>
       <input id="api-key" type="password" autocomplete="off" placeholder="API key (optional locally)" />
       <button type="submit">Set key</button>
       <button type="button" id="clear-api-key">Clear</button>
       <span id="api-key-status" role="status" aria-live="polite"></span>
     </form>
+    <div id="entra-auth-controls" class="api-key-form" hidden>
+      <button type="button" id="sign-in-button">Sign in with Microsoft</button>
+      <button type="button" id="sign-out-button" hidden>Sign out</button>
+      <span id="auth-status" role="status" aria-live="polite"></span>
+    </div>
   </div>
   <nav class="nav-tabs" role="tablist" aria-label="Dashboard sections">
     <button type="button" class="nav-tab is-active" id="tab-intake" role="tab" aria-selected="true" aria-controls="view-intake" tabindex="0" data-view="intake">Customer intake</button>
@@ -262,6 +267,6 @@
   <p>Portfolio demo only. Not a banking service, compliance certification, or financial decision system.</p>
 </footer>
 
-<script src="app.js"></script>
+<script src="dist/app.js" defer></script>
 </body>
 </html>

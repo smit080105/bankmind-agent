@@ -17,8 +17,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build authenticated dashboard
+        run: |
+          npm ci
+          npm run build:frontend
+          npm audit --audit-level=high
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Scan tracked files for new secrets
+        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+
       - name: Run tests
         run: pytest tests/ -v
+
+      - name: Run Bandit
+        run: bandit -r app scripts -lll
+
+      - name: Audit dependencies
+        run: pip-audit -r requirements.txt

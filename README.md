@@ -21,24 +21,30 @@ Resume bullets you can adapt:
 - Added idempotent API request handling, a SHA-256 hash-chained action ledger, and balanced double-entry journals for supported demo transactions.
 - Developed a responsive dashboard for customer intake, underwriter review, and audit-chain inspection, backed by FastAPI endpoints.
 - Added an offline pytest suite covering policy boundaries, API behavior, escalation workflows, sanitization, audit verification, and accounting invariants.
-- Added configurable API-key protection, restrictive CORS defaults, bounded inputs, safer API error handling, and atomic one-time escalation review.
+- Added Entra access-token validation with role-scoped API permissions, a local-demo API-key mode, restrictive CORS defaults, bounded inputs, safer API error handling, and atomic one-time escalation review.
 
 These are project features, not measured production outcomes. Adjust the wording to match your contribution and verify details before using them on a resume.
 
 ## Scope and limitations
 
-This is a local portfolio demonstration using synthetic sample data. It is not a banking service and must not be used for real customer data, financial decisions, or transactions. PII masking uses patterns and is not comprehensive or a substitute for a reviewed data-protection program. The hash chain is tamper-evident for verified records, but is not an immutable or independently anchored audit system. The application does not implement production authentication or authorization and makes no regulatory-compliance claim.
+This is a portfolio demonstration using synthetic sample data. It is not a banking service and must not be used for real customer data, financial decisions, or transactions. PII masking uses patterns and is not comprehensive or a substitute for a reviewed data-protection program. The hash chain is tamper-evident for verified records, but is not an immutable or independently anchored audit system. Entra authentication is an integration foundation that still requires tenant-specific app registration, role assignments, deployment review, and operational controls; it makes no regulatory-compliance claim.
 
 The customer-facing agent is an AI relationship-manager assistant, not a human bank manager. It is designed to explain supported workflow outcomes clearly, apply the demo's deterministic rules, and route exceptions for human review. The numeric limits in the policy files are illustrative portfolio settings, not claims about universal banking practice or regulatory standards. A real institution must set and validate its own jurisdiction-specific policies, customer-fairness controls, approval authority, disclosures, and complaint-handling process with qualified compliance and legal teams before deployment.
 
 ## Security configuration
 
-- Set `BANKMIND_API_KEY` to a unique, high-entropy secret of at least 32 characters before exposing the service. When configured, all `/api/*` routes except `/api/health` require `Authorization: Bearer <key>`. The dashboard accepts the key in its header and keeps it in tab-scoped `sessionStorage`.
-- The API refuses to start if the key is missing or shorter than 32 characters. Protected routes also fail closed if authentication is misconfigured. Generate a unique key and keep it out of source control; Docker Compose requires it.
+- `AUTH_MODE=api_key` uses a single shared bearer key and is for local demos only. The API refuses to start if that key is missing or shorter than 32 characters. The dashboard keeps it in tab-scoped `sessionStorage`, which remains accessible to same-origin JavaScript.
+- `AUTH_MODE` defaults to `entra`, which fails startup unless its required configuration is present. For local demos, explicitly set `AUTH_MODE=api_key` and configure the local key.
+- Set `AUTH_MODE=entra` to require Entra v2 access tokens. The API validates the RS256 signature against tenant JWKS and checks issuer, audience, and expiry. The browser uses MSAL with authorization-code/PKCE flow; access tokens remain in MSAL's session storage. Set `ENTRA_TENANT_ID`, `ENTRA_API_AUDIENCE`, `ENTRA_SPA_CLIENT_ID`, and `ENTRA_API_SCOPE`; optionally set `ENTRA_REDIRECT_URI`.
+- Configure an Entra API app registration to expose the delegated scope named in `ENTRA_API_SCOPE` and define app roles with values `BankMind.Reader`, `BankMind.Reviewer`, and `BankMind.Operator`. Assign users/groups explicitly. Reader permits data reads, Reviewer permits reads and escalation review, and Operator permits reads and decision submission. The API rejects valid tokens lacking the required role.
+- `GET /api/auth/config` is public and returns only non-secret SPA configuration so the dashboard can initialize MSAL. `/api/health` is also public. Interactive API docs and OpenAPI schema are disabled when `AUTH_MODE=entra`; they remain available in local API-key mode.
 - `CORS_ALLOWED_ORIGINS` is a comma-separated allowlist; it defaults to the two local dashboard origins rather than `*`.
-- Request sizes/values and human override fields are validated, unexpected decision failures are logged server-side rather than returned to clients, and an escalation can transition out of `pending` only once.
+- Request bodies are limited to 64 KiB, model values and human override fields are validated, API responses are marked `no-store`, and a restrictive Content Security Policy is set. Unexpected decision failures are logged server-side rather than returned to clients, and an escalation can transition out of `pending` only once.
 - Each LLM tool call is bound to the original request/customer. The execution dispatcher recomputes policy against database state immediately before writing an action; model-provided policy results are not treated as execution authorization.
-- The dashboard/API-key flow is intended for a local portfolio demo. Use HTTPS and a real identity provider, role-based authorization, secret management, persistent rate limiting, and independently protected audit storage before any shared or production deployment. PII masking and the SHA-256 chain do not provide compliance or production data security.
+- Docker runs as an unprivileged user, uses a read-only root filesystem, drops Linux capabilities, and binds its published port to localhost. Place it behind a TLS-terminating reverse proxy; if that proxy is in another container, configure a private Docker network and an explicit, non-public app port binding.
+- Entra integration does not make the application production-ready by itself. Configure and review the tenant/app registrations and role assignments; add persistent rate limiting at the deployment gateway, managed secrets, Python dependency locking/updating, encrypted database storage/backups, and separately controlled append-only audit export. Terminate TLS at a trusted proxy, pin container images to reviewed digests, set the production CORS origins, and enable GitHub secret scanning/push protection. Define provider retention settings and data-minimization controls before sending any real data to an LLM. Pattern-based masking and the local SHA-256 chain are not substitutes for these controls or a compliance program.
+
+CI runs the test suite, `detect-secrets` against tracked files, Bandit, `pip-audit`, and `npm audit`. Review `.secrets.baseline` before approving any baseline additions; enable GitHub secret scanning and push protection as an additional repository control.
 
 ---
 
@@ -112,6 +118,7 @@ Open **http://localhost:8000/**.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
+| `GET` | `/api/auth/config` | Public, non-secret configuration used to initialize local-key mode or Entra MSAL sign-in. |
 | `POST` | `/api/decide` | Evaluates request with supervisor (supports `Idempotency-Key`; key reuse with a different request returns HTTP 409). |
 | `GET` | `/api/escalations` | Lists pending escalations in the HITL underwriter queue. |
 | `GET` | `/api/escalations/{case_id}` | Retrieves full context and risk flags for an escalated case. |
@@ -136,11 +143,14 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 2. Install dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
+npm ci
+npm run build:frontend
 
 # 3. Configure environment (PowerShell: Copy-Item .env.example .env)
 cp .env.example .env
-# Set LLM_PROVIDER (groq recommended for free tier), provider API key, and
-# BANKMIND_API_KEY (generate with: python -c "import secrets; print(secrets.token_urlsafe(32))")
+# Set LLM_PROVIDER and the provider API key. For local demo, set
+# AUTH_MODE=api_key and BANKMIND_API_KEY. For Entra, set AUTH_MODE=entra
+# and the ENTRA_* values above.
 
 # 4. Initialize database
 python scripts/init_db.py

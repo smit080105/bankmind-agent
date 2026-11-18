@@ -5,11 +5,12 @@ from app.database import init_schema, get_escalations, get_action_ledger, resolv
 from app.agents import escalation_agent
 from app.main import app
 
-_TEST_API_KEY = "test-only-api-key-with-at-least-32-characters"
+_TEST_API_KEY = "t" * 40
 _AUTH_HEADERS = {"Authorization": f"Bearer {_TEST_API_KEY}"}
 
 
 def _client(monkeypatch):
+    monkeypatch.setattr("app.main.AUTH_MODE", "api_key")
     monkeypatch.setattr("app.main.BANKMIND_API_KEY", _TEST_API_KEY)
     return TestClient(app)
 

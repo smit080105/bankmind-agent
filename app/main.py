@@ -8,16 +8,29 @@ import hashlib
 import hmac
 import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+import jwt
 from fastapi import FastAPI, HTTPException, Header, Query, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from jwt import PyJWKClientConnectionError, PyJWKClientError
 
-from app.config import BANKMIND_API_KEY, CORS_ALLOWED_ORIGINS
+from app.config import (
+    AUTH_MODE,
+    BANKMIND_API_KEY,
+    CORS_ALLOWED_ORIGINS,
+    ENTRA_API_AUDIENCE,
+    ENTRA_API_SCOPE,
+    ENTRA_REDIRECT_URI,
+    ENTRA_SPA_CLIENT_ID,
+    ENTRA_TENANT_ID,
+)
 from app.database import (
     init_schema,
     get_conn,
@@ -37,6 +50,8 @@ from app.models import (
 )
 from app.agents import supervisor, execution_agent
 from app.security import audit
+from app.security.entra import validate_entra_access_token
+from app.security.request_size import RequestBodyLimitMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("bankmind")
@@ -44,12 +59,32 @@ logger = logging.getLogger("bankmind")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not BANKMIND_API_KEY:
-        raise RuntimeError(
-            "BANKMIND_API_KEY must be configured before starting the API."
-        )
-    if len(BANKMIND_API_KEY) < 32:
-        raise RuntimeError("BANKMIND_API_KEY must contain at least 32 characters.")
+    if AUTH_MODE == "api_key":
+        if not BANKMIND_API_KEY:
+            raise RuntimeError(
+                "BANKMIND_API_KEY must be configured when AUTH_MODE=api_key."
+            )
+        if len(BANKMIND_API_KEY) < 32:
+            raise RuntimeError("BANKMIND_API_KEY must contain at least 32 characters.")
+    elif AUTH_MODE == "entra":
+        missing = [
+            name for name, value in (
+                ("ENTRA_TENANT_ID", ENTRA_TENANT_ID),
+                ("ENTRA_API_AUDIENCE", ENTRA_API_AUDIENCE),
+                ("ENTRA_SPA_CLIENT_ID", ENTRA_SPA_CLIENT_ID),
+                ("ENTRA_API_SCOPE", ENTRA_API_SCOPE),
+            ) if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Missing Entra configuration: " + ", ".join(missing)
+            )
+        try:
+            uuid.UUID(ENTRA_TENANT_ID)
+        except ValueError as exc:
+            raise RuntimeError("ENTRA_TENANT_ID must be a tenant GUID.") from exc
+    else:
+        raise RuntimeError("AUTH_MODE must be either 'api_key' or 'entra'.")
     init_schema()
     yield
 
@@ -59,7 +94,12 @@ app = FastAPI(
     description="Agentic AI banking supervisor — Enterprise Phase 3 with HITL and Cryptographic Audit",
     version="0.3.0",
     lifespan=lifespan,
+    docs_url="/docs" if AUTH_MODE == "api_key" else None,
+    redoc_url="/redoc" if AUTH_MODE == "api_key" else None,
+    openapi_url="/openapi.json" if AUTH_MODE == "api_key" else None,
 )
+
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=64 * 1024)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,27 +112,76 @@ app.add_middleware(
 @app.middleware("http")
 async def protect_api_and_set_security_headers(request, call_next):
     response = None
+    public_api_paths = {"/api/health", "/api/auth/config"}
     if (
         request.url.path.startswith("/api/")
-        and request.url.path != "/api/health"
+        and request.url.path not in public_api_paths
         and request.method != "OPTIONS"
     ):
-        if not BANKMIND_API_KEY:
+        if AUTH_MODE == "api_key":
+            if not BANKMIND_API_KEY:
+                response = JSONResponse(
+                    status_code=503,
+                    content={"detail": "API authentication is not configured."},
+                )
+            else:
+                supplied_key = request.headers.get("authorization", "")
+                expected_key = f"Bearer {BANKMIND_API_KEY}"
+                if not hmac.compare_digest(
+                    supplied_key.encode("utf-8"), expected_key.encode("utf-8")
+                ):
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "A valid API key is required."},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+        elif AUTH_MODE == "entra":
+            supplied = request.headers.get("authorization", "")
+            scheme, _, token = supplied.partition(" ")
+            if scheme.lower() != "bearer" or not token:
+                response = JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid Entra access token is required."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            else:
+                try:
+                    claims = await run_in_threadpool(
+                        validate_entra_access_token, token
+                    )
+                except PyJWKClientConnectionError:
+                    logger.exception("Could not retrieve Entra signing keys")
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "Authentication service is temporarily unavailable."},
+                    )
+                except (jwt.PyJWTError, PyJWKClientError):
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "The Entra access token is invalid."},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                else:
+                    required_roles = _required_entra_roles(
+                        request.url.path, request.method
+                    )
+                    role_claim = claims.get("roles")
+                    token_roles = (
+                        set(role_claim)
+                        if isinstance(role_claim, list)
+                        and all(isinstance(role, str) for role in role_claim)
+                        else set()
+                    )
+                    if not token_roles.intersection(required_roles):
+                        response = JSONResponse(
+                            status_code=403,
+                            content={"detail": "This account is not authorized for this operation."},
+                        )
+        else:
             response = JSONResponse(
                 status_code=503,
                 content={"detail": "API authentication is not configured."},
             )
-        else:
-            supplied_key = request.headers.get("authorization", "")
-            expected_key = f"Bearer {BANKMIND_API_KEY}"
-            if not hmac.compare_digest(
-                supplied_key.encode("utf-8"), expected_key.encode("utf-8")
-            ):
-                response = JSONResponse(
-                    status_code=401,
-                    content={"detail": "A valid API key is required."},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
 
     if response is None:
         response = await call_next(request)
@@ -100,12 +189,44 @@ async def protect_api_and_set_security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if not request.url.path.startswith(("/docs", "/redoc")):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com; "
+            "frame-src https://login.microsoftonline.com; object-src 'none'; "
+            "base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        )
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def _required_entra_roles(path: str, method: str) -> set[str]:
+    if path == "/api/decide" and method == "POST":
+        return {"BankMind.Operator"}
+    if path.endswith("/review") and method == "POST":
+        return {"BankMind.Reviewer"}
+    return {"BankMind.Reader", "BankMind.Reviewer", "BankMind.Operator"}
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    if AUTH_MODE == "entra":
+        return {
+            "auth_mode": "entra",
+            "tenant_id": ENTRA_TENANT_ID,
+            "client_id": ENTRA_SPA_CLIENT_ID,
+            "api_scope": ENTRA_API_SCOPE,
+            "redirect_uri": ENTRA_REDIRECT_URI or None,
+        }
+    return {"auth_mode": "api_key"}
 
 
 @app.get("/api/customers")

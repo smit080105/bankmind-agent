@@ -1,9 +1,17 @@
+import {
+  InteractionRequiredAuthError,
+  PublicClientApplication,
+} from "@azure/msal-browser";
+
 const API_BASE = "/api";
+let authMode = "api_key";
+let entraClient = null;
+let entraApiScope = "";
 
 async function requestJson(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  const apiKey = sessionStorage.getItem("bankmind-api-key");
-  if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
+  const token = await getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   let body;
   try {
@@ -19,10 +27,37 @@ async function requestJson(path, options = {}) {
   return body;
 }
 
+async function getAccessToken() {
+  if (authMode === "api_key") {
+    return sessionStorage.getItem("bankmind-api-key");
+  }
+
+  const account = entraClient?.getActiveAccount();
+  if (!account) throw new Error("Sign in with your Microsoft account to continue.");
+
+  try {
+    const result = await entraClient.acquireTokenSilent({
+      account,
+      scopes: [entraApiScope],
+    });
+    return result.accessToken;
+  } catch (error) {
+    if (error instanceof InteractionRequiredAuthError) {
+      await entraClient.acquireTokenRedirect({ account, scopes: [entraApiScope] });
+      throw new Error("Redirecting to Microsoft sign-in.");
+    }
+    throw error;
+  }
+}
+
 const apiKeyForm = document.getElementById("api-key-form");
 const apiKeyInput = document.getElementById("api-key");
 const apiKeyStatus = document.getElementById("api-key-status");
 const clearApiKeyButton = document.getElementById("clear-api-key");
+const entraAuthControls = document.getElementById("entra-auth-controls");
+const signInButton = document.getElementById("sign-in-button");
+const signOutButton = document.getElementById("sign-out-button");
+const authStatus = document.getElementById("auth-status");
 
 apiKeyForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -43,6 +78,77 @@ clearApiKeyButton.addEventListener("click", () => {
   apiKeyInput.value = "";
   apiKeyStatus.textContent = "API key cleared.";
 });
+
+signInButton.addEventListener("click", async () => {
+  try {
+    await entraClient.loginRedirect({ scopes: [entraApiScope] });
+  } catch (error) {
+    authStatus.textContent = `Microsoft sign-in failed: ${error.message}`;
+  }
+});
+
+signOutButton.addEventListener("click", async () => {
+  try {
+    const account = entraClient.getActiveAccount() || entraClient.getAllAccounts()[0];
+    await entraClient.logoutRedirect({ account });
+  } catch (error) {
+    authStatus.textContent = `Sign-out failed: ${error.message}`;
+  }
+});
+
+async function initializeAuthentication() {
+  try {
+    const response = await fetch(`${API_BASE}/auth/config`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Authentication configuration failed (${response.status}).`);
+    const config = await response.json();
+
+    if (config.auth_mode === "api_key") {
+      authMode = "api_key";
+      apiKeyForm.hidden = false;
+      loadCustomers();
+      updateEscalationBadge();
+      return;
+    }
+    if (config.auth_mode !== "entra") throw new Error("Unsupported authentication mode.");
+
+    authMode = "entra";
+    entraApiScope = config.api_scope;
+    entraAuthControls.hidden = false;
+    entraClient = await PublicClientApplication.createPublicClientApplication({
+      auth: {
+        clientId: config.client_id,
+        authority: `https://login.microsoftonline.com/${encodeURIComponent(config.tenant_id)}`,
+        redirectUri: config.redirect_uri || window.location.origin,
+      },
+      cache: { cacheLocation: "sessionStorage" },
+    });
+
+    const result = await entraClient.handleRedirectPromise();
+    if (result?.account) entraClient.setActiveAccount(result.account);
+
+    let account = entraClient.getActiveAccount();
+    const accounts = entraClient.getAllAccounts();
+    if (!account && accounts.length === 1) {
+      account = accounts[0];
+      entraClient.setActiveAccount(account);
+    }
+    if (account) {
+      signInButton.hidden = true;
+      signOutButton.hidden = false;
+      authStatus.textContent = `Signed in as ${account.username}.`;
+      loadCustomers();
+      updateEscalationBadge();
+    } else if (accounts.length > 1) {
+      authStatus.textContent = "Multiple Microsoft accounts are cached. Sign out and clear the session before choosing an account.";
+      signOutButton.hidden = false;
+    }
+  } catch (error) {
+    apiKeyForm.hidden = true;
+    entraAuthControls.hidden = false;
+    signInButton.hidden = true;
+    authStatus.textContent = `Authentication setup failed: ${error.message}`;
+  }
+}
 
 function textElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -603,5 +709,4 @@ verifyAuditBtn.addEventListener("click", async () => {
 
 // Initialize
 setRequestType("loan_rate_negotiation");
-loadCustomers();
-updateEscalationBadge();
+initializeAuthentication();

@@ -2,14 +2,39 @@ services:
   bankmind-agent:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:
-      BANKMIND_API_KEY: ${BANKMIND_API_KEY:?Set BANKMIND_API_KEY in .env before starting Docker Compose}
+      AUTH_MODE: ${AUTH_MODE:-entra}
+      BANKMIND_API_KEY: ${BANKMIND_API_KEY:-}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_API_AUDIENCE: ${ENTRA_API_AUDIENCE:-}
+      ENTRA_SPA_CLIENT_ID: ${ENTRA_SPA_CLIENT_ID:-}
+      ENTRA_API_SCOPE: ${ENTRA_API_SCOPE:-}
+      ENTRA_REDIRECT_URI: ${ENTRA_REDIRECT_URI:-}
     volumes:
       # Persist the seeded SQLite DB across container restarts.
       - bankmind-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   bankmind-data:
